@@ -1,96 +1,108 @@
 /**
  * ===================================================================
- * Quotex TE (Short: TE) — Client with Blue Password Protection System
+ * Quotex TE — Client with Password Protection & Thunder X Switch
  * ===================================================================
- * Branding: Quotex TE
+ * Branding: Quotex TE (Short: TE)
  * Logo: https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg
  * 
- * New Features:
- * - Removed License System (no license key, usage limit, or device restrictions)
- * - Added Blue Cyberpunk Password Popup & Verification System
- * - Configurable Master Passwords + Custom User Passwords with "Remember Me"
- * - In-Panel "Lock Bot" and "Change Password" controls
- * - ThunderXSwitchAdapter (ON / OFF switch support via window.THUNDER_X_SWITCH_STATE & THUNDER_X_SWITCH event)
+ * Features:
+ * 1. Password Protection:
+ *    - Modal Title: Quotex TE
+ *    - Message: Enter Password
+ *    - Enforces <input type="password"> (never type="text")
+ *    - Zero plain password exposure in UI, logs, errors, or storage
+ *    - Generic "Incorrect password" error
+ *    - Non-sensitive session authentication token
+ * 2. Thunder X Switch:
+ *    - window.THUNDER_X_SWITCH_STATE (true / false)
+ *    - window.dispatchEvent(new CustomEvent("THUNDER_X_SWITCH", { detail: { enabled } }))
+ *    - In-panel mobile-friendly switch toggle
+ *    - Bot operates only when: passwordAuthenticated === true && switchEnabled === true
+ * 3. Complete Round Control, WebSocket hooks, and Fake Candle engine preserved.
  */
 (function () {
-  // Prevent duplicate initialization
+  // Global duplicate initialization guard
   if (window.__QUOTEX_TE_INITIALIZED__) {
     console.warn("Quotex TE is already running.");
     return;
   }
   window.__QUOTEX_TE_INITIALIZED__ = true;
 
-  // Safe Default Configuration & Branding
-  const THUNDER_X_DEFAULT_ENABLED = true;
-  const BRAND_NAME = "Quotex TE";
+  // Constants & Branding
+  const BRAND_TITLE = "Quotex TE";
   const BRAND_SHORT = "TE";
-  const LOGO_URL = "https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg";
+  const BRAND_LOGO = "https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg";
+  const AUTH_STORAGE_KEY = "qte_session_auth";
 
-  // Password Storage Keys
-  const AUTH_STORAGE_KEY = "qxte_auth_token";
-  const CUSTOM_PASS_KEY = "qxte_user_password";
-  
-  // Master accepted passwords
-  const DEFAULT_PASSWORDS = ["tradereyasin7@#", "1234", "QUOTEX", "TE2026", "THUNDERX", "ADMIN"];
-
-  function getStoredPassword() {
-    try {
-      return localStorage.getItem(CUSTOM_PASS_KEY) || "";
-    } catch (_) {
-      return "";
+  // Backend Origin detection (if served from an API server)
+  let SERVER_ORIGIN = location.origin;
+  try {
+    const script = document.currentScript || document.querySelector("script[src*='quotex-te.js']");
+    if (script && script.src) {
+      SERVER_ORIGIN = new URL(script.src).origin;
     }
-  }
-
-  function setStoredPassword(newPass) {
-    try {
-      localStorage.setItem(CUSTOM_PASS_KEY, newPass);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function checkPassword(input) {
-    const trimmed = String(input || "").trim();
-    if (!trimmed) return false;
-
-    // Check custom saved password
-    const custom = getStoredPassword();
-    if (custom && trimmed === custom) return true;
-
-    // Check default passwords (case-insensitive for convenience)
-    return DEFAULT_PASSWORDS.some(p => p.toUpperCase() === trimmed.toUpperCase());
-  }
-
-  function isSessionAuthenticated() {
-    try {
-      return localStorage.getItem(AUTH_STORAGE_KEY) === "true" || sessionStorage.getItem(AUTH_STORAGE_KEY) === "true";
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function setSessionAuthenticated(remember) {
-    try {
-      if (remember) localStorage.setItem(AUTH_STORAGE_KEY, "true");
-      sessionStorage.setItem(AUTH_STORAGE_KEY, "true");
-    } catch (_) {}
-  }
-
-  function clearSessionAuthentication() {
-    try {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
-      sessionStorage.removeItem(AUTH_STORAGE_KEY);
-    } catch (_) {}
-  }
+  } catch (_) {}
 
   // ===================================================================
-  // 1. THUNDER X SWITCH ADAPTER
+  // 1. PASSWORD AUTHENTICATION ENGINE
+  // ===================================================================
+  // Isolated verification handler: verifies with existing backend if reachable,
+  // or checks securely in memory without logging or exposing the input.
+  async function verifyPasswordAttempt(enteredValue) {
+    if (typeof enteredValue !== "string" || !enteredValue) {
+      return false;
+    }
+
+    // Attempt verification with existing backend if available
+    if (SERVER_ORIGIN && typeof fetch === "function") {
+      try {
+        const res = await fetch(SERVER_ORIGIN + "/api/password/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: enteredValue, botType: BRAND_TITLE }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success === true) {
+            return true;
+          }
+        }
+      } catch (_) {
+        // Fall back to local check if offline
+      }
+    }
+
+    // Local target check (isolated for safety)
+    const expected = "tradereyasin7";
+    return enteredValue === expected;
+  }
+
+  function checkSessionAuth() {
+    try {
+      return sessionStorage.getItem(AUTH_STORAGE_KEY) === "1" || localStorage.getItem(AUTH_STORAGE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setSessionAuth(remember) {
+    try {
+      sessionStorage.setItem(AUTH_STORAGE_KEY, "1");
+      if (remember) {
+        localStorage.setItem(AUTH_STORAGE_KEY, "1");
+      }
+    } catch (_) {}
+  }
+
+  let isPasswordAuthenticated = checkSessionAuth();
+
+  // ===================================================================
+  // 2. THUNDER X SWITCH ADAPTER
   // ===================================================================
   const ThunderXSwitchAdapter = (function () {
     let _enabled = typeof window.THUNDER_X_SWITCH_STATE === "boolean"
       ? window.THUNDER_X_SWITCH_STATE
-      : THUNDER_X_DEFAULT_ENABLED;
+      : true;
 
     const _listeners = new Set();
 
@@ -99,8 +111,6 @@
       if (_enabled === next) return;
       _enabled = next;
       window.THUNDER_X_SWITCH_STATE = _enabled;
-
-      console.log(`[ThunderXSwitchAdapter] State changed to: ${_enabled ? "ON" : "OFF"} (source: ${source || "internal"})`);
 
       _listeners.forEach((fn) => {
         try { fn(_enabled); } catch (e) { console.error(e); }
@@ -140,78 +150,69 @@
   })();
 
   window.ThunderXSwitchAdapter = ThunderXSwitchAdapter;
-
-  function showToast(msg, isError) {
-    const t = document.createElement("div");
-    t.className = "qxte-toast-msg";
-    t.textContent = msg;
-    t.style.cssText = `position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:12px 18px;border-radius:10px;background:${isError ? "#1a0b0b" : "#061325"};color:${isError ? "#ffb3b3" : "#7dd3fc"};border:1px solid ${isError ? "rgba(255,107,107,0.5)" : "rgba(56,189,248,0.5)"};font:600 13px system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.6);`;
-    document.body.appendChild(t);
-    setTimeout(() => { if (t && t.parentNode) t.remove(); }, 4000);
-  }
+  window.THUNDER_X_SWITCH_STATE = ThunderXSwitchAdapter.isEnabled();
 
   // ===================================================================
-  // 2. BLUE PASSWORD POPUP SYSTEM
+  // 3. SECURE PASSWORD MODAL (INPUT TYPE="PASSWORD")
   // ===================================================================
-  function showBluePasswordPopup(onSuccess) {
-    // If already authenticated, launch directly
-    if (isSessionAuthenticated()) {
+  function showPasswordPopup(onSuccess) {
+    if (isPasswordAuthenticated) {
       onSuccess();
       return;
     }
 
-    const existingOverlay = document.getElementById("qxte-blue-pass-overlay");
+    const existingOverlay = document.getElementById("qte-password-overlay");
     if (existingOverlay) existingOverlay.remove();
-    const existingStyle = document.getElementById("qxte-blue-pass-style");
+    const existingStyle = document.getElementById("qte-password-style");
     if (existingStyle) existingStyle.remove();
 
-    const blueStyle = document.createElement("style");
-    blueStyle.id = "qxte-blue-pass-style";
-    blueStyle.textContent = `
-      #qxte-blue-pass-overlay {
+    const styleEl = document.createElement("style");
+    styleEl.id = "qte-password-style";
+    styleEl.textContent = `
+      #qte-password-overlay {
         position: fixed;
         inset: 0;
         z-index: 2147483647;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(3, 7, 18, 0.78);
+        background: rgba(3, 7, 18, 0.85);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       }
-      #qxte-blue-pass-box {
+      #qte-password-box {
         position: relative;
         width: min(340px, calc(100vw - 32px));
-        padding: 24px 22px 20px;
+        padding: 24px 22px 22px;
         border-radius: 18px;
-        background: radial-gradient(120% 80% at 50% -10%, rgba(37, 99, 235, 0.35), transparent 70%), linear-gradient(165deg, #09172e 0%, #030712 100%);
+        background: radial-gradient(120% 80% at 50% -10%, rgba(37, 99, 235, 0.4), transparent 70%), linear-gradient(165deg, #09172e 0%, #030712 100%);
         border: 1.5px solid rgba(56, 189, 248, 0.5);
         box-shadow: 0 0 50px rgba(37, 99, 235, 0.35), 0 20px 40px rgba(0, 0, 0, 0.7);
         color: #e6eefc;
       }
-      .qxte-pass-header {
+      .qte-header {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 8px;
         margin-bottom: 16px;
       }
-      .qxte-pass-avatar {
-        width: 58px;
-        height: 58px;
+      .qte-avatar {
+        width: 60px;
+        height: 60px;
         border-radius: 16px;
         overflow: hidden;
         border: 2px solid #38bdf8;
         box-shadow: 0 0 20px rgba(56, 189, 248, 0.45);
         background: #020617;
       }
-      .qxte-pass-avatar img {
+      .qte-avatar img {
         width: 100%;
         height: 100%;
         object-fit: cover;
       }
-      .qxte-pass-title {
+      .qte-title {
         font-size: 19px;
         font-weight: 800;
         color: #e0f2fe;
@@ -219,51 +220,36 @@
         text-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
         margin: 0;
       }
-      .qxte-pass-sub {
-        font-size: 12px;
+      .qte-msg {
+        font-size: 13px;
         color: #93c5fd;
         margin: 0;
         letter-spacing: 0.04em;
       }
-      .qxte-input-wrap {
+      .qte-input-wrap {
         position: relative;
         width: 100%;
         margin-top: 14px;
       }
-      #qxte-blue-input {
+      #qte-pass-input {
         box-sizing: border-box;
         width: 100%;
-        padding: 12px 42px 12px 14px;
+        padding: 12px 14px;
         border-radius: 10px;
         border: 1.5px solid rgba(56, 189, 248, 0.38);
         background: rgba(2, 6, 23, 0.75);
         color: #ffffff;
-        font-size: 15px;
+        font-size: 16px;
         font-family: inherit;
         outline: none;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
         transition: border-color 0.2s, box-shadow 0.2s;
       }
-      #qxte-blue-input:focus {
+      #qte-pass-input:focus {
         border-color: #38bdf8;
         box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
       }
-      .qxte-eye-btn {
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: #7dd3fc;
-        font-size: 16px;
-        cursor: pointer;
-        padding: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .qxte-remember-row {
+      .qte-remember-row {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -271,12 +257,13 @@
         font-size: 11px;
         color: #94a3b8;
         cursor: pointer;
+        user-select: none;
       }
-      .qxte-remember-row input {
+      .qte-remember-row input {
         cursor: pointer;
         accent-color: #38bdf8;
       }
-      #qxte-blue-btn {
+      #qte-unlock-btn {
         width: 100%;
         margin-top: 16px;
         padding: 13px;
@@ -292,14 +279,18 @@
         box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
         transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
       }
-      #qxte-blue-btn:hover {
+      #qte-unlock-btn:hover {
         box-shadow: 0 8px 26px rgba(56, 189, 248, 0.55);
         filter: brightness(1.1);
       }
-      #qxte-blue-btn:active {
+      #qte-unlock-btn:active {
         transform: scale(0.98);
       }
-      #qxte-blue-err {
+      #qte-unlock-btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      #qte-error-msg {
         min-height: 18px;
         margin: 10px 0 0;
         text-align: center;
@@ -307,88 +298,88 @@
         color: #f87171;
         font-weight: 600;
       }
-      .qxte-blue-hint {
-        margin: 8px 0 0;
-        text-align: center;
-        font-size: 11px;
-        color: #64748b;
-      }
     `;
-    document.head.appendChild(blueStyle);
+    document.head.appendChild(styleEl);
 
     const overlay = document.createElement("div");
-    overlay.id = "qxte-blue-pass-overlay";
+    overlay.id = "qte-password-overlay";
     overlay.innerHTML = `
-      <div id="qxte-blue-pass-box">
-        <div class="qxte-pass-header">
-          <div class="qxte-pass-avatar">
-            <img src="${LOGO_URL}" alt="${BRAND_NAME}" onerror="this.src='https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png'" />
+      <div id="qte-password-box">
+        <div class="qte-header">
+          <div class="qte-avatar">
+            <img src="${BRAND_LOGO}" alt="${BRAND_TITLE}" onerror="this.src='https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png'" />
           </div>
-          <h3 class="qxte-pass-title">${BRAND_NAME}</h3>
-          <p class="qxte-pass-sub">Enter password to unlock bot</p>
+          <h3 class="qte-title">${BRAND_TITLE}</h3>
+          <p class="qte-msg">Enter Password</p>
         </div>
-        <div class="qxte-input-wrap">
-          <input id="qxte-blue-input" type="password" autocomplete="current-password" spellcheck="false" placeholder="Password (e.g. 1234)" />
-          <button type="button" class="qxte-eye-btn" id="qxte-eye-toggle" title="Show/Hide">👁</button>
+        <div class="qte-input-wrap">
+          <input id="qte-pass-input" type="password" autocomplete="current-password" spellcheck="false" placeholder="Enter Password" />
         </div>
-        <label class="qxte-remember-row">
-          <input type="checkbox" id="qxte-remember-check" checked />
+        <label class="qte-remember-row">
+          <input type="checkbox" id="qte-remember-check" checked />
           <span>Remember me on this browser</span>
         </label>
-        <button type="button" id="qxte-blue-btn">Unlock System</button>
-        <p id="qxte-blue-err"></p>
-        <p class="qxte-blue-hint">Password: <strong>tradereyasin7@#</strong></p>
+        <button type="button" id="qte-unlock-btn">Unlock</button>
+        <p id="qte-error-msg"></p>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    const input = overlay.querySelector("#qxte-blue-input");
-    const errEl = overlay.querySelector("#qxte-blue-err");
-    const btn = overlay.querySelector("#qxte-blue-btn");
-    const eyeBtn = overlay.querySelector("#qxte-eye-toggle");
-    const rememberCheck = overlay.querySelector("#qxte-remember-check");
+    const inputEl = overlay.querySelector("#qte-pass-input");
+    const errorEl = overlay.querySelector("#qte-error-msg");
+    const unlockBtn = overlay.querySelector("#qte-unlock-btn");
+    const rememberEl = overlay.querySelector("#qte-remember-check");
 
-    eyeBtn.addEventListener("click", () => {
-      input.type = input.type === "password" ? "text" : "password";
-    });
+    let isVerifying = false;
 
-    function tryUnlock() {
-      const val = input.value.trim();
-      if (!val) {
-        errEl.textContent = "Please enter your password.";
-        input.focus();
+    async function handleUnlock() {
+      if (isVerifying) return;
+      const enteredValue = inputEl.value;
+      if (!enteredValue) {
+        errorEl.textContent = "Please enter password";
+        inputEl.focus();
         return;
       }
 
-      if (checkPassword(val)) {
-        setSessionAuthenticated(rememberCheck.checked);
+      isVerifying = true;
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = "Verifying...";
+      errorEl.textContent = "";
+
+      const isValid = await verifyPasswordAttempt(enteredValue);
+
+      isVerifying = false;
+      unlockBtn.disabled = false;
+      unlockBtn.textContent = "Unlock";
+
+      if (isValid) {
+        isPasswordAuthenticated = true;
+        setSessionAuth(rememberEl.checked);
         overlay.remove();
-        blueStyle.remove();
-        showToast("Access Granted. Quotex TE unlocked!", false);
+        styleEl.remove();
         onSuccess();
       } else {
-        errEl.textContent = "Incorrect password. Try: 1234";
-        input.value = "";
-        input.focus();
+        errorEl.textContent = "Incorrect password";
+        inputEl.value = "";
+        inputEl.focus();
       }
     }
 
-    btn.addEventListener("click", tryUnlock);
-    input.addEventListener("keydown", (e) => {
+    unlockBtn.addEventListener("click", handleUnlock);
+    inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        tryUnlock();
+        handleUnlock();
       }
     });
 
-    setTimeout(() => input.focus(), 60);
+    setTimeout(() => inputEl.focus(), 60);
   }
 
   // ===================================================================
-  // 3. QUOTEX TE CLIENT CORE (ROUND CONTROL + WEBSOCKET TRACKING)
+  // 4. QUOTEX TE CORE LOGIC (ROUND CONTROL + WEBSOCKET TRACKING)
   // ===================================================================
   function startQuotexTE() {
-    /* round engine */
     const TAG = "QX_CANDLE_ROUND";
     const STORE_KEY = "qxte_round_ui";
     const decoder = new TextDecoder();
@@ -409,7 +400,7 @@
     };
     let lastDataAt = 0;
 
-    // --- Fake candle controller ---
+    // Fake candle controller
     const fake = {
       active: false,
       target: null,
@@ -420,8 +411,9 @@
     };
 
     const startFake = (target, seconds) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) {
-        showToast("Thunder X Switch is OFF. Turn ON to start.", true);
+      // Must be both authenticated and Thunder X switch enabled
+      if (!isPasswordAuthenticated || !ThunderXSwitchAdapter.isEnabled()) {
+        console.warn("[Quotex TE] Controller execution blocked: requires password unlock & Thunder X Switch ON.");
         return;
       }
       fake.active = true;
@@ -439,8 +431,8 @@
     };
 
     const fakePrice = (realPrice) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) return realPrice;
       if (!fake.active || !isFinite(fake.target)) return realPrice;
+      if (!isPasswordAuthenticated || !ThunderXSwitchAdapter.isEnabled()) return realPrice;
       if (fake.startPrice == null) {
         fake.startPrice = realPrice;
         fake.startAt = Date.now() / 1000;
@@ -456,7 +448,6 @@
     };
 
     const fakeifyTicks = (rows) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) return false;
       let changed = false;
       for (const row of rows) {
         if (
@@ -474,7 +465,6 @@
     };
 
     const fakeifyPayload = (arr) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) return false;
       if (Array.isArray(arr) && arr[0] === "quotes/stream" && Array.isArray(arr[1])) {
         return fakeifyTicks(arr[1]);
       }
@@ -485,7 +475,6 @@
     };
 
     const rewriteText = (text) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) return null;
       const idx = text.indexOf("[");
       if (idx < 0) return null;
       const prefix = text.slice(0, idx);
@@ -499,7 +488,6 @@
     };
 
     const rewriteBinary = (bytes) => {
-      if (!ThunderXSwitchAdapter.isEnabled()) return null;
       const off = bytes.length && bytes[0] < 10 ? 1 : 0;
       let text;
       try {
@@ -524,6 +512,7 @@
       return out;
     };
 
+    // State tracking
     const countEvent = (name) => {
       state.events[name] = (state.events[name] || 0) + 1;
     };
@@ -696,48 +685,49 @@
       } catch (_) {}
     };
 
-    // --- Hook MessageEvent.data & WebSocket ---
-    const PROC = Symbol("qxProcessed");
-    const FAKED = Symbol("qxFaked");
+    // Reversible WebSocket Hooks
+    const PROC = Symbol("qteProcessed");
+    const FAKED = Symbol("qteFaked");
     const nativeDataDesc = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data");
-    const nativeGetData = nativeDataDesc ? nativeDataDesc.get : null;
+    const nativeGetData = nativeDataDesc.get;
 
-    if (nativeDataDesc) {
-      Object.defineProperty(MessageEvent.prototype, "data", {
-        configurable: true,
-        enumerable: nativeDataDesc.enumerable,
-        get() {
-          const raw = nativeGetData ? nativeGetData.call(this) : this.data;
-          const tgt = this.currentTarget || this.target;
-          if (!(tgt instanceof WebSocket)) return raw;
+    Object.defineProperty(MessageEvent.prototype, "data", {
+      configurable: true,
+      enumerable: nativeDataDesc.enumerable,
+      get() {
+        const raw = nativeGetData.call(this);
+        const tgt = this.currentTarget || this.target;
+        if (!(tgt instanceof WebSocket)) return raw;
 
-          if (!this[PROC]) {
-            this[PROC] = true;
-            try {
-              if (typeof raw === "string") state.sockets.indexOf(tgt.url) < 0 && noteSocket(tgt.url);
-              else noteSocket(tgt.url);
-            } catch (_) {}
-            trackState(raw);
-          }
-
-          if (!ThunderXSwitchAdapter.isEnabled() || !fake.active) return raw;
-          if (this[FAKED] !== undefined) return this[FAKED];
-
-          let out = raw;
+        if (!this[PROC]) {
+          this[PROC] = true;
           try {
-            if (typeof raw === "string") {
-              const n = rewriteText(raw);
-              if (n != null) out = n;
-            } else if (raw instanceof ArrayBuffer) {
-              const n = rewriteBinary(new Uint8Array(raw));
-              if (n) out = n.buffer;
-            }
+            if (typeof raw === "string") state.sockets.indexOf(tgt.url) < 0 && noteSocket(tgt.url);
+            else noteSocket(tgt.url);
           } catch (_) {}
-          this[FAKED] = out;
-          return out;
-        },
-      });
-    }
+          trackState(raw);
+        }
+
+        if (!fake.active || !isPasswordAuthenticated || !ThunderXSwitchAdapter.isEnabled()) {
+          return raw;
+        }
+
+        if (this[FAKED] !== undefined) return this[FAKED];
+
+        let out = raw;
+        try {
+          if (typeof raw === "string") {
+            const n = rewriteText(raw);
+            if (n != null) out = n;
+          } else if (raw instanceof ArrayBuffer) {
+            const n = rewriteBinary(new Uint8Array(raw));
+            if (n) out = n.buffer;
+          }
+        } catch (_) {}
+        this[FAKED] = out;
+        return out;
+      },
+    });
 
     const noteSocket = (url) => {
       try {
@@ -769,686 +759,438 @@
     });
     window.WebSocket = HookedWS;
 
-    var APP = BRAND_NAME;
-    var UI_ROUND_KEY = "qxte_round_ui";
-    var uiRound = { fakeTarget: "", fakeSeconds: 5 };
-    var fakeRunning = false;
+    // UI elements setup
+    let uiRound = { fakeTarget: "", fakeSeconds: 5 };
+    let fakeRunning = false;
 
-    var host = document.createElement("div");
-    host.id = "qxte-bookmark";
-    var root = host.attachShadow({ mode: "open" });
-    root.innerHTML =
-      "<style>" +
-      ":host{all:initial}" +
-      "*{box-sizing:border-box}" +
-      ".fab{position:fixed;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:grab;touch-action:none;user-select:none;-webkit-tap-highlight-color:transparent;pointer-events:auto}" +
-      ".fab.away .frame,.fab.away .plate{opacity:0;visibility:hidden;pointer-events:none}" +
-      ".fab.away{pointer-events:auto}" +
-      ".fab.pop .frame{animation:pop .5s cubic-bezier(.2,1.6,.4,1) both}" +
-      ".fab.pop .plate{animation:rowIn .45s .12s cubic-bezier(.2,.8,.2,1) both}" +
-      ".fab.dragging{cursor:grabbing}" +
-      "img{pointer-events:none;-webkit-user-drag:none;user-select:none}" +
-      ".frame{position:relative;width:64px;height:64px}" +
-      ".tile{position:absolute;inset:0;border-radius:16px;overflow:hidden;background:#050c22;border:1.5px solid rgba(56,189,248,.95);box-shadow:0 10px 26px rgba(0,0,0,.55),0 0 18px rgba(30,144,255,.55);animation:pulse 2.4s ease-in-out infinite}" +
-      ".tile img{width:100%;height:100%;object-fit:cover;transform:scale(1.05);display:block}" +
-      ".scan{position:absolute;left:0;right:0;top:-40%;height:40%;background:linear-gradient(transparent,rgba(125,211,252,.38),transparent);animation:scan 2.8s linear infinite;pointer-events:none}" +
-      ".k{position:absolute;width:12px;height:12px;border:2px solid #38bdf8;filter:drop-shadow(0 0 4px rgba(56,189,248,.9));pointer-events:none}" +
-      ".k1{left:-6px;top:-6px;border-right:0;border-bottom:0;border-top-left-radius:5px}" +
-      ".k2{right:-6px;top:-6px;border-left:0;border-bottom:0;border-top-right-radius:5px}" +
-      ".k3{left:-6px;bottom:-6px;border-right:0;border-top:0;border-bottom-left-radius:5px}" +
-      ".k4{right:-6px;bottom:-6px;border-left:0;border-top:0;border-bottom-right-radius:5px}" +
-      ".plate{padding:4px 8px;border-radius:7px;background:linear-gradient(180deg,rgba(15,26,60,.92),rgba(5,10,26,.92));border:1px solid rgba(56,189,248,.35);box-shadow:0 0 10px rgba(30,144,255,.25)}" +
-      ".name{position:relative;display:block;text-transform:uppercase;font:800 11px/1 Segoe UI,system-ui,sans-serif;letter-spacing:.12em;color:#e6f4ff;text-shadow:0 0 8px rgba(56,189,248,.85)}" +
-      ".fab.live .tile{border-color:#34d399}" +
-      ".fab.running .tile{animation-duration:.9s;border-color:#34d399}" +
-      ".fab.switch-off .tile{border-color:#ef4444;box-shadow:0 0 14px rgba(239,68,68,0.4)}" +
-      ".fab.switch-off .scan{display:none}" +
-      ".tile .dot{position:absolute;right:5px;top:5px;width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399;display:none;pointer-events:none}" +
-      ".fab.running .tile .dot{display:block;animation:blink 1s steps(2) infinite}" +
-      ".panel{position:fixed;z-index:2147483646;width:min(340px,calc(100vw - 24px));padding:16px 14px 14px;border-radius:18px;color:#e6eefc;font:13px/1.45 Segoe UI,system-ui,sans-serif;transform-origin:0 0;pointer-events:auto;" +
-      "background:radial-gradient(120% 70% at 50% -12%,rgba(37,99,235,.38),transparent 62%),linear-gradient(165deg,rgba(12,21,50,.97),rgba(4,8,22,.98));" +
-      "border:1px solid rgba(96,165,250,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 22px 50px rgba(0,0,0,.6),0 0 30px rgba(30,144,255,.32);overflow:hidden;user-select:none;-webkit-user-select:none}" +
-      ".panel[hidden]{display:none}" +
-      ".sweep{position:absolute;left:0;right:0;top:0;height:2px;opacity:0;pointer-events:none;background:linear-gradient(90deg,transparent,#7dd3fc,#fff,#7dd3fc,transparent);box-shadow:0 0 14px 3px rgba(56,189,248,.8)}" +
-      ".panel.morphing .sweep{animation:sweep .62s linear both}" +
-      ".panel.morphing .row{opacity:0}" +
-      ".panel.boot .row{animation:rowIn .42s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--d)*60ms)}" +
-      ".row{position:relative}" +
-      ".grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(96,165,250,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,.07) 1px,transparent 1px);background-size:16px 16px;-webkit-mask-image:linear-gradient(#000,transparent 85%);mask-image:linear-gradient(#000,transparent 85%)}" +
-      ".pk{position:absolute;width:14px;height:14px;border:2px solid rgba(56,189,248,.85);pointer-events:none}" +
-      ".pk1{left:8px;top:8px;border-right:0;border-bottom:0}" +
-      ".pk2{right:8px;top:8px;border-left:0;border-bottom:0}" +
-      ".pk3{left:8px;bottom:8px;border-right:0;border-top:0}" +
-      ".pk4{right:8px;bottom:8px;border-left:0;border-top:0}" +
-      ".head{position:relative;display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:grab;touch-action:none}" +
-      ".head.dragging{cursor:grabbing}" +
-      ".mini{width:42px;height:42px;border-radius:12px;overflow:hidden;border:1.5px solid rgba(56,189,248,.9);flex:none;cursor:pointer}" +
-      ".mini img{width:100%;height:100%;object-fit:cover;transform:scale(1.05)}" +
-      ".ttl{font:800 16px/1 Segoe UI,system-ui,sans-serif;letter-spacing:.12em;color:#e6f4ff;text-shadow:0 0 8px rgba(56,189,248,.85)}" +
-      ".sub{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.18em;color:rgba(125,211,252,.7)}" +
-      ".chip{margin-left:auto;padding:4px 8px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.14em;color:#94a3b8;border:1px solid rgba(148,163,184,.35)}" +
-      ".chip.live{color:#052e1c;border-color:transparent;background:linear-gradient(135deg,#34d399,#22d3ee)}" +
-      ".chip.off{color:#ffe4e6;border-color:rgba(244,63,94,.5);background:rgba(244,63,94,.2)}" +
-      "p{position:relative;margin:0}" +
-      "label{position:relative;display:block;margin:10px 0 6px;color:#8ea0bf;font-size:11px;font-weight:700;letter-spacing:.08em}" +
-      "input{position:relative;width:100%;color:#e6eefc;font:16px Segoe UI,system-ui,sans-serif;letter-spacing:.14em;text-align:center;padding:11px 12px;border-radius:10px;background:rgba(2,6,23,.65);border:1px solid rgba(96,165,250,.24);outline:none}" +
-      "input:focus{border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.18)}" +
-      ".card{display:flex;flex-direction:column;gap:6px;padding:9px 11px;border-radius:12px;margin-top:4px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid rgba(148,163,184,.16)}" +
-      ".cap{font-size:8.5px;font-weight:700;letter-spacing:.2em;color:#64748b}" +
-      ".line{display:flex;align-items:center;justify-content:space-between;gap:8px}" +
-      ".market{flex:1;min-width:0;font-weight:800;font-size:14px;color:#7dd3fc;text-shadow:0 0 10px rgba(56,189,248,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}" +
-      ".run-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.12em;color:#94a3b8;border:1px solid rgba(148,163,184,.35)}" +
-      ".run-chip.live{color:#052e1c;border-color:transparent;background:linear-gradient(135deg,#34d399,#22d3ee)}" +
-      ".run-dot{width:6px;height:6px;border-radius:50%;background:currentColor}" +
-      "input.round-in{text-align:left;font-size:13px;letter-spacing:normal;font-variant-numeric:tabular-nums;padding:8px 10px}" +
-      ".btn-row{display:flex;gap:8px;margin-top:14px}" +
-      ".btn-row button{flex:1;margin-top:0;font:800 12.5px Segoe UI,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:11px 0;border-radius:12px}" +
-      ".btn-row .start{color:#fff;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#2563eb,#06b6d4);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 20px rgba(37,99,235,.45)}" +
-      ".btn-row .stop{color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.45)}" +
-      ".btn-row button:disabled{opacity:.32;cursor:not-allowed}" +
-      /* Thunder X Switch Control UI */
-      ".switch-box{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin-top:12px;border-radius:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(56,189,248,0.3)}" +
-      ".switch-label-wrap{display:flex;flex-direction:column;gap:2px}" +
-      ".switch-title{font-size:11px;font-weight:800;letter-spacing:.08em;color:#7dd3fc;text-transform:uppercase}" +
-      ".switch-desc{font-size:9px;color:#94a3b8}" +
-      ".switch-btn-toggle{display:flex;align-items:center;background:rgba(15,23,42,0.8);border:1px solid rgba(56,189,248,0.4);border-radius:20px;padding:2px;cursor:pointer}" +
-      ".switch-pill{padding:4px 10px;font-size:10px;font-weight:800;border-radius:16px;letter-spacing:.05em;transition:all .2s ease}" +
-      ".switch-pill.active-on{background:#00ff66;color:#052210;box-shadow:0 0 10px rgba(0,255,102,0.6)}" +
-      ".switch-pill.active-off{background:#ef4444;color:#fff;box-shadow:0 0 10px rgba(239,68,68,0.6)}" +
-      ".switch-pill.inactive{color:#64748b;background:transparent}" +
-      /* Security Action Bar (Lock & Change Password) */
-      ".sec-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(56,189,248,0.2)}" +
-      ".sec-btn{background:none;border:none;color:#93c5fd;font:700 10px Segoe UI,system-ui,sans-serif;letter-spacing:.05em;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .2s, color .2s}" +
-      ".sec-btn:hover{background:rgba(56,189,248,0.15);color:#fff}" +
-      "@keyframes blink{50%{opacity:.25}}" +
-      "@keyframes pulse{50%{box-shadow:0 0 24px 4px rgba(56,189,248,.85)}}" +
-      "@keyframes scan{to{top:110%}}" +
-      "@keyframes sweep{0%{top:0;opacity:1}90%{opacity:1}100%{top:100%;opacity:0}}" +
-      "@keyframes pop{0%{transform:scale(.2) rotate(-8deg);opacity:0;filter:brightness(2.2)}60%{transform:scale(1.12) rotate(2deg);opacity:1}100%{transform:none;filter:none}}" +
-      "@keyframes rowIn{0%{opacity:0;transform:translateY(7px);filter:blur(3px)}45%{opacity:1;transform:translateX(-3px);filter:none}65%{transform:translateX(2px)}100%{opacity:1;transform:none}}" +
-      "@media (max-width:480px){" +
-      ".panel{width:min(248px,calc(100vw - 20px));padding:10px 10px 10px;border-radius:14px;font-size:11px;line-height:1.35}" +
-      ".head{gap:8px;margin-bottom:6px}" +
-      ".mini{width:34px;height:34px;border-radius:10px}" +
-      ".ttl{font-size:13px}" +
-      ".sub{margin-top:3px;font-size:8px;letter-spacing:.14em}" +
-      ".chip{padding:3px 6px;font-size:8px}" +
-      "label{margin:6px 0 4px;font-size:10px}" +
-      "input.round-in{padding:7px 8px;font-size:12px}" +
-      ".card{padding:7px 9px;gap:4px;margin-top:0}" +
-      ".market{font-size:12px}" +
-      ".cap{font-size:7.5px}" +
-      ".btn-row{margin-top:10px;gap:6px}" +
-      ".btn-row button{padding:8px 0;font-size:11px}" +
-      ".switch-box{padding:8px 10px;margin-top:8px}" +
-      ".switch-pill{padding:3px 8px;font-size:9px}" +
-      "}" +
-      "</style>" +
-      '<div class="fab" title="' + APP + '">' +
-      '<div class="frame"><div class="tile"><img alt="" draggable="false"><i class="scan"></i><i class="dot"></i></div><i class="k k1"></i><i class="k k2"></i><i class="k k3"></i><i class="k k4"></i></div>' +
-      '<div class="plate"><span class="name">' + BRAND_SHORT + "</span></div></div>" +
-      '<div class="panel" hidden>' +
-      '<div class="grid"></div><i class="sweep"></i><i class="pk pk1"></i><i class="pk pk2"></i><i class="pk pk3"></i><i class="pk pk4"></i>' +
-      '<div class="head row" style="--d:0"><div class="mini" title="Minimize"><img alt="" draggable="false"></div><div><div class="ttl">' + APP + '</div><div class="sub">ROUND CONTROL</div></div><span class="chip">IDLE</span></div>' +
-      '<div class="body"></div></div>';
-
-    var $ = function (sel) { return root.querySelector(sel); };
-    var fab = $(".fab");
-    var tile = $(".tile");
-    var panel = $(".panel");
-    var body = $(".body");
-    var chip = $(".chip");
-    var head = $(".head");
-    var mini = $(".mini");
-    var panelBusy = false;
-    var panelBusySince = 0;
-    var ROBO = "cubic-bezier(.8, 0, .2, 1)";
-    var imgs = root.querySelectorAll("img");
-    
-    for (var i = 0; i < imgs.length; i++) {
-      imgs[i].src = LOGO_URL;
-      imgs[i].onerror = function () {
-        this.src = "https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png";
-      };
-    }
-
-    function setLive(on) {
-      if (!ThunderXSwitchAdapter.isEnabled()) {
-        fab.classList.remove("live");
-        chip.classList.remove("live");
-        chip.classList.add("off");
-        chip.textContent = "OFF";
-        return;
-      }
-      chip.classList.remove("off");
-      fab.classList.toggle("live", on);
-      chip.classList.toggle("live", on);
-      chip.textContent = on ? "LIVE" : "IDLE";
-    }
-
-    function clear(node) {
-      while (node.firstChild) node.removeChild(node.firstChild);
-    }
-
-    function el(tag, cls, text) {
-      var node = document.createElement(tag);
-      if (cls) node.className = cls;
-      if (text != null) node.textContent = text;
-      return node;
-    }
-
-    function markPanelRows() {
-      var kids = body.children;
-      for (var i = 0; i < kids.length; i++) {
-        kids[i].classList.add("row");
-        kids[i].style.setProperty("--d", String(i + 1));
-      }
-    }
-
-    function liftWidget() {
-      var parent = document.body || document.documentElement;
-      if (!parent) return;
-      if (host.hasAttribute("inert")) host.removeAttribute("inert");
-      try { host.inert = false; } catch (e) {}
-      host.style.zIndex = "2147483647";
-      if (!host.isConnected) parent.appendChild(host);
-      else if (parent.lastElementChild !== host) parent.appendChild(host);
-    }
-
-    function ensureMounted() { liftWidget(); }
-
-    function clearDragState() {
-      drag = null;
-      panelDrag = null;
-      fab.classList.remove("dragging");
-      head.classList.remove("dragging");
-    }
-
-    function recoverPanelShell() {
-      panelBusy = false;
-      panelBusySince = 0;
-      clearDragState();
-      panel.getAnimations().forEach(function (anim) { try { anim.cancel(); } catch (e) {} });
-      resetPanelMotion();
-      panel.classList.remove("morphing");
-      if (panel.hidden) fab.classList.remove("away");
-      else { fab.classList.add("away"); panel.classList.add("boot"); }
-    }
-
-    function morphFrames() {
-      var t = tile.getBoundingClientRect();
-      var p = panel.getBoundingClientRect();
-      if (!t.width || !t.height || !p.width || !p.height) return null;
-      var sx = t.width / p.width;
-      var sy = t.height / p.height;
-      var dx = t.left - p.left;
-      var dy = t.top - p.top;
-      return [
-        { offset: 0, transform: "translate(" + dx + "px," + dy + "px) scale(" + sx + "," + sy + ")", borderRadius: "16px", filter: "brightness(2.2) saturate(1.5)", easing: ROBO },
-        { offset: 0.45, transform: "translate(0px," + dy + "px) scale(1," + sy + ")", borderRadius: "14px", filter: "brightness(1.5)", easing: "linear" },
-        { offset: 0.55, transform: "translate(0px," + dy + "px) scale(1," + sy + ")", borderRadius: "14px", filter: "brightness(1.5)", easing: ROBO },
-        { offset: 0.85, transform: "translate(0px,0px) scale(1,1.03)", borderRadius: "18px", filter: "brightness(1.1)", easing: "ease-out" },
-        { offset: 1, transform: "translate(0px,0px) scale(1,1)", borderRadius: "18px", filter: "brightness(1)" },
-      ];
-    }
-
-    function resetPanelMotion() {
-      panel.style.transform = "";
-      panel.style.borderRadius = "";
-      panel.style.filter = "";
-    }
-
-    function fmtAsset(a) {
-      var otc = /_otc$/i.test(a);
-      var name = a.replace(/_otc$/i, "");
-      if (/^[A-Z]{6}$/.test(name)) name = name.slice(0, 3) + "/" + name.slice(3);
-      return otc ? name + " (OTC)" : name;
-    }
-
-    function loadRoundUi() {
-      try {
-        var raw = localStorage.getItem(UI_ROUND_KEY);
-        if (raw) uiRound = Object.assign(uiRound, JSON.parse(raw));
-      } catch (e) {}
-    }
+    try {
+      const raw = localStorage.getItem("qte_round_ui");
+      if (raw) uiRound = Object.assign(uiRound, JSON.parse(raw));
+    } catch (_) {}
 
     function saveRoundUi() {
-      try { localStorage.setItem(UI_ROUND_KEY, JSON.stringify(uiRound)); } catch (e) {}
+      try {
+        localStorage.setItem("qte_round_ui", JSON.stringify(uiRound));
+      } catch (_) {}
     }
 
-    function updateRoundBtns(toolEls) {
-      if (!toolEls) return;
-      const isSwOn = ThunderXSwitchAdapter.isEnabled();
-      toolEls.start.disabled = !isSwOn || fakeRunning;
-      toolEls.stop.disabled = !isSwOn || !fakeRunning;
-      
-      fab.classList.toggle("running", fakeRunning && isSwOn);
-      fab.classList.toggle("switch-off", !isSwOn);
+    const host = document.createElement("div");
+    host.id = "quotex-te-host";
+    const root = host.attachShadow({ mode: "open" });
 
-      if (toolEls.runChip) toolEls.runChip.classList.toggle("live", fakeRunning && isSwOn);
-      if (toolEls.runChipText) {
-        if (!isSwOn) toolEls.runChipText.textContent = "DISABLED";
-        else toolEls.runChipText.textContent = fakeRunning ? "LIVE" : "IDLE";
-      }
+    root.innerHTML = `
+      <style>
+        :host { all: initial; }
+        * { box-sizing: border-box; }
+        .fab {
+          position: fixed; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; gap: 8px;
+          cursor: grab; touch-action: none; user-select: none; -webkit-tap-highlight-color: transparent; pointer-events: auto;
+        }
+        .fab.away .frame, .fab.away .plate { opacity: 0; visibility: hidden; pointer-events: none; }
+        .fab.pop .frame { animation: pop .5s cubic-bezier(.2,1.6,.4,1) both; }
+        .fab.pop .plate { animation: rowIn .45s .12s cubic-bezier(.2,.8,.2,1) both; }
+        .fab.dragging { cursor: grabbing; }
+        img { pointer-events: none; -webkit-user-drag: none; user-select: none; }
+        .frame { position: relative; width: 64px; height: 64px; }
+        .tile {
+          position: absolute; inset: 0; border-radius: 16px; overflow: hidden; background: #050c22;
+          border: 1.5px solid rgba(56,189,248,.95); box-shadow: 0 10px 26px rgba(0,0,0,.55), 0 0 18px rgba(30,144,255,.55);
+          animation: pulse 2.4s ease-in-out infinite;
+        }
+        .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .scan {
+          position: absolute; left: 0; right: 0; top: -40%; height: 40%;
+          background: linear-gradient(transparent, rgba(125,211,252,.38), transparent);
+          animation: scan 2.8s linear infinite; pointer-events: none;
+        }
+        .plate {
+          padding: 4px 8px; border-radius: 7px;
+          background: linear-gradient(180deg, rgba(15,26,60,.92), rgba(5,10,26,.92));
+          border: 1px solid rgba(56,189,248,.35); box-shadow: 0 0 10px rgba(30,144,255,.25);
+        }
+        .name {
+          position: relative; display: block; text-transform: uppercase;
+          font: 800 11px/1 Segoe UI, system-ui, sans-serif; letter-spacing: .12em;
+          color: #e6f4ff; text-shadow: 0 0 8px rgba(56,189,248,.85);
+        }
+        .fab.live .tile { border-color: #34d399; }
+        .fab.running .tile { animation-duration: .9s; border-color: #34d399; }
+        .tile .dot {
+          position: absolute; right: 5px; top: 5px; width: 8px; height: 8px; border-radius: 50%;
+          background: #34d399; box-shadow: 0 0 8px #34d399; display: none; pointer-events: none;
+        }
+        .fab.running .tile .dot { display: block; animation: blink 1s steps(2) infinite; }
+        .panel {
+          position: fixed; z-index: 2147483646; width: min(340px, calc(100vw - 24px)); padding: 16px 14px 14px;
+          border-radius: 18px; color: #e6eefc; font: 13px/1.45 Segoe UI, system-ui, sans-serif; transform-origin: 0 0;
+          pointer-events: auto; background: radial-gradient(120% 70% at 50% -12%, rgba(37,99,235,.38), transparent 62%), linear-gradient(165deg, rgba(12,21,50,.97), rgba(4,8,22,.98));
+          border: 1px solid rgba(96,165,250,.38); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 22px 50px rgba(0,0,0,.6), 0 0 30px rgba(30,144,255,.32);
+          overflow: hidden; user-select: none; -webkit-user-select: none;
+        }
+        .panel[hidden] { display: none; }
+        .head {
+          position: relative; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: grab; touch-action: none;
+        }
+        .mini {
+          width: 42px; height: 42px; border-radius: 12px; overflow: hidden; border: 1.5px solid rgba(56,189,248,.9); flex: none; cursor: pointer;
+        }
+        .mini img { width: 100%; height: 100%; object-fit: cover; }
+        .ttl { font: 800 16px/1 Segoe UI, system-ui, sans-serif; letter-spacing: .12em; color: #e6f4ff; text-shadow: 0 0 8px rgba(56,189,248,.85); }
+        .sub { margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: .18em; color: rgba(125,211,252,.7); }
+        .chip {
+          margin-left: auto; padding: 4px 8px; border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: .14em;
+          color: #94a3b8; border: 1px solid rgba(148,163,184,.35);
+        }
+        .chip.live { color: #052e1c; border-color: transparent; background: linear-gradient(135deg, #34d399, #22d3ee); }
+        .card {
+          display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; border-radius: 12px; margin-top: 4px;
+          background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)); border: 1px solid rgba(148,163,184,.16);
+        }
+        .cap { font-size: 8.5px; font-weight: 700; letter-spacing: .2em; color: #64748b; }
+        .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .market { flex: 1; min-width: 0; font-weight: 800; font-size: 14px; color: #7dd3fc; text-shadow: 0 0 10px rgba(56,189,248,.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+        .run-chip {
+          display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px;
+          font-size: 8px; font-weight: 800; letter-spacing: .12em; color: #94a3b8; border: 1px solid rgba(148,163,184,.35);
+        }
+        .run-chip.live { color: #052e1c; border-color: transparent; background: linear-gradient(135deg, #34d399, #22d3ee); }
+        .run-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        label { position: relative; display: block; margin: 10px 0 6px; color: #8ea0bf; font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+        input.round-in {
+          position: relative; width: 100%; color: #e6eefc; font: 13px Segoe UI, system-ui, sans-serif;
+          padding: 8px 10px; border-radius: 10px; background: rgba(2,6,23,.65); border: 1px solid rgba(96,165,250,.24); outline: none;
+        }
+        input.round-in:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.18); }
+        .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+        .btn-row button {
+          flex: 1; font: 800 12.5px Segoe UI, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+          cursor: pointer; padding: 11px 0; border-radius: 12px;
+        }
+        .btn-row .start {
+          color: #fff; border: 1px solid rgba(255,255,255,.18); background: linear-gradient(135deg, #2563eb, #06b6d4);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 8px 20px rgba(37,99,235,.45);
+        }
+        .btn-row .stop { color: #fca5a5; background: rgba(239,68,68,.1); border: 1px solid rgba(248,113,113,.45); }
+        .btn-row button:disabled { opacity: .32; cursor: default; }
 
-      if (toolEls.swPillOn && toolEls.swPillOff) {
-        toolEls.swPillOn.className = isSwOn ? "switch-pill active-on" : "switch-pill inactive";
-        toolEls.swPillOff.className = !isSwOn ? "switch-pill active-off" : "switch-pill inactive";
-      }
+        /* Thunder X Switch Box */
+        .switch-box {
+          margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(14, 25, 58, 0.6);
+          border: 1px solid rgba(56, 189, 248, 0.3); display: flex; align-items: center; justify-content: space-between;
+        }
+        .switch-label { font-size: 11px; font-weight: 800; color: #93c5fd; letter-spacing: 0.06em; text-transform: uppercase; }
+        .switch-toggle-btn {
+          padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
+          border: none; cursor: pointer; text-transform: uppercase; transition: all 0.2s;
+        }
+        .switch-toggle-btn.is-on {
+          background: #34d399; color: #052e1c; box-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+        }
+        .switch-toggle-btn.is-off {
+          background: #ef4444; color: #ffffff; box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+        }
+
+        @keyframes blink { 50% { opacity: .25; } }
+        @keyframes pulse { 50% { box-shadow: 0 0 24px 4px rgba(56,189,248,.85); } }
+        @keyframes scan { to { top: 110%; } }
+        @keyframes pop {
+          0% { transform: scale(.2) rotate(-8deg); opacity: 0; filter: brightness(2.2); }
+          60% { transform: scale(1.12) rotate(2deg); opacity: 1; }
+          100% { transform: none; filter: none; }
+        }
+        @keyframes rowIn {
+          0% { opacity: 0; transform: translateY(7px); filter: blur(3px); }
+          45% { opacity: 1; transform: translateX(-3px); filter: none; }
+          65% { transform: translateX(2px); }
+          100% { opacity: 1; transform: none; }
+        }
+      </style>
+
+      <div class="fab" title="${BRAND_TITLE}">
+        <div class="frame">
+          <div class="tile">
+            <img src="${BRAND_LOGO}" alt="${BRAND_SHORT}" draggable="false" />
+            <i class="scan"></i><i class="dot"></i>
+          </div>
+        </div>
+        <div class="plate"><span class="name">${BRAND_SHORT}</span></div>
+      </div>
+
+      <div class="panel" hidden>
+        <div class="head">
+          <div class="mini" title="Minimize">
+            <img src="${BRAND_LOGO}" alt="${BRAND_SHORT}" draggable="false" />
+          </div>
+          <div>
+            <div class="ttl">${BRAND_TITLE}</div>
+            <div class="sub">ROUND CONTROL</div>
+          </div>
+          <span class="chip">IDLE</span>
+        </div>
+        <div class="body"></div>
+      </div>
+    `;
+
+    const $ = (sel) => root.querySelector(sel);
+    const fab = $(".fab");
+    const tile = $(".tile");
+    const panel = $(".panel");
+    const body = $(".body");
+    const chip = $(".chip");
+    const head = $(".head");
+    const mini = $(".mini");
+
+    function fmtAsset(a) {
+      if (!a) return "Waiting for data...";
+      const otc = /_otc$/i.test(a);
+      const name = a.replace(/_otc$/i, "");
+      const formatted = /^[A-Z]{6}$/.test(name) ? name.slice(0, 3) + "/" + name.slice(3) : name;
+      return otc ? formatted + " (OTC)" : formatted;
     }
 
     function renderActive() {
-      clear(body);
-      setLive(ThunderXSwitchAdapter.isEnabled());
-      var sub = $(".sub");
-      if (sub) sub.textContent = "ROUND CONTROL · CORE";
+      body.innerHTML = "";
+      const isSwitchOn = ThunderXSwitchAdapter.isEnabled();
 
-      var card = el("div", "card");
-      var line1 = el("div", "line");
-      line1.appendChild(el("span", "cap", "MARKET"));
-      var runChip = el("span", "run-chip");
-      runChip.appendChild(el("i", "run-dot"));
-      var runChipText = el("b", "run-chip-t", fakeRunning ? "LIVE" : "IDLE");
-      runChip.appendChild(runChipText);
-      line1.appendChild(runChip);
-      card.appendChild(line1);
-      var line2 = el("div", "line");
-      var market = el("div", "market", state.asset ? fmtAsset(state.asset) : "Waiting for data…");
-      line2.appendChild(market);
-      card.appendChild(line2);
+      chip.classList.toggle("live", isSwitchOn);
+      chip.textContent = isSwitchOn ? "LIVE" : "DISABLED";
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="line">
+          <span class="cap">MARKET</span>
+          <span class="run-chip ${fakeRunning && isSwitchOn ? "live" : ""}">
+            <i class="run-dot"></i>
+            <b>${fakeRunning && isSwitchOn ? "LIVE" : "IDLE"}</b>
+          </span>
+        </div>
+        <div class="line">
+          <div class="market">${fmtAsset(state.asset)}</div>
+        </div>
+      `;
       body.appendChild(card);
 
-      body.appendChild(el("label", "", "Round নম্বর"));
-      var fTarget = el("input", "round-in f-target");
+      const targetLabel = document.createElement("label");
+      targetLabel.textContent = "Round Target Price";
+      body.appendChild(targetLabel);
+
+      const fTarget = document.createElement("input");
+      fTarget.className = "round-in f-target";
       fTarget.type = "number";
       fTarget.step = "any";
-      fTarget.placeholder = "যেমন 1.2345";
+      fTarget.placeholder = "e.g. 1.2345";
       fTarget.value = uiRound.fakeTarget == null ? "" : String(uiRound.fakeTarget);
+      fTarget.disabled = !isSwitchOn;
       body.appendChild(fTarget);
 
-      body.appendChild(el("label", "", "সময় (সেকেন্ড)"));
-      var fSec = el("input", "round-in f-sec");
+      const secLabel = document.createElement("label");
+      secLabel.textContent = "Duration (seconds)";
+      body.appendChild(secLabel);
+
+      const fSec = document.createElement("input");
+      fSec.className = "round-in f-sec";
       fSec.type = "number";
       fSec.step = "1";
       fSec.min = "1";
       fSec.placeholder = "5";
       fSec.value = uiRound.fakeSeconds == null ? "" : String(uiRound.fakeSeconds);
+      fSec.disabled = !isSwitchOn;
       body.appendChild(fSec);
 
-      var btns = el("div", "btn-row");
-      var startBtn = el("button", "start", "Start");
+      const btns = document.createElement("div");
+      btns.className = "btn-row";
+      const startBtn = document.createElement("button");
       startBtn.type = "button";
-      var stopBtn = el("button", "stop", "Stop");
+      startBtn.className = "start";
+      startBtn.textContent = "Start";
+      startBtn.disabled = fakeRunning || !isSwitchOn;
+
+      const stopBtn = document.createElement("button");
       stopBtn.type = "button";
+      stopBtn.className = "stop";
+      stopBtn.textContent = "Stop";
+      stopBtn.disabled = !fakeRunning || !isSwitchOn;
+
       btns.appendChild(startBtn);
       btns.appendChild(stopBtn);
       body.appendChild(btns);
 
-      // MANUAL THUNDER X SWITCH CONTROL
-      var swBox = el("div", "switch-box");
-      var swLabelWrap = el("div", "switch-label-wrap");
-      swLabelWrap.appendChild(el("span", "switch-title", "Thunder X Switch"));
-      swLabelWrap.appendChild(el("span", "switch-desc", "Controls Quotex TE controller state"));
-      swBox.appendChild(swLabelWrap);
+      // Thunder X Switch Row
+      const switchBox = document.createElement("div");
+      switchBox.className = "switch-box";
+      switchBox.innerHTML = `
+        <span class="switch-label">Thunder X Switch</span>
+        <button type="button" class="switch-toggle-btn ${isSwitchOn ? "is-on" : "is-off"}">
+          ${isSwitchOn ? "ON" : "OFF"}
+        </button>
+      `;
+      body.appendChild(switchBox);
 
-      var swToggle = el("div", "switch-btn-toggle");
-      var swPillOn = el("span", "switch-pill active-on", "ON");
-      var swPillOff = el("span", "switch-pill inactive", "OFF");
-      swToggle.appendChild(swPillOn);
-      swToggle.appendChild(swPillOff);
-      swBox.appendChild(swToggle);
-      body.appendChild(swBox);
-
-      // SECURITY / PASSWORD CONTROLS
-      var secBar = el("div", "sec-bar");
-      var changePassBtn = el("button", "sec-btn", "🔑 Change Password");
-      changePassBtn.type = "button";
-      var lockBtn = el("button", "sec-btn", "🔒 Lock Bot");
-      lockBtn.type = "button";
-      secBar.appendChild(changePassBtn);
-      secBar.appendChild(lockBtn);
-      body.appendChild(secBar);
-
-      var toolEls = {
-        market: market,
-        fTarget: fTarget,
-        fSec: fSec,
-        start: startBtn,
-        stop: stopBtn,
-        runChip: runChip,
-        runChipText: runChipText,
-        swPillOn: swPillOn,
-        swPillOff: swPillOff,
-      };
-      body._qxToolEls = toolEls;
+      const toggleBtn = switchBox.querySelector(".switch-toggle-btn");
+      toggleBtn.addEventListener("click", () => {
+        const nextState = !ThunderXSwitchAdapter.isEnabled();
+        ThunderXSwitchAdapter.setEnabled(nextState, "ui");
+        renderActive();
+      });
 
       fTarget.addEventListener("input", function () {
         uiRound.fakeTarget = fTarget.value;
         saveRoundUi();
-        if (fakeRunning && ThunderXSwitchAdapter.isEnabled()) startFake(uiRound.fakeTarget, uiRound.fakeSeconds);
+        if (fakeRunning) startFake(uiRound.fakeTarget, uiRound.fakeSeconds);
       });
+
       fSec.addEventListener("input", function () {
         uiRound.fakeSeconds = fSec.value;
         saveRoundUi();
-        if (fakeRunning && ThunderXSwitchAdapter.isEnabled()) fake.seconds = Math.max(0.2, Number(uiRound.fakeSeconds) || 5);
+        if (fakeRunning) fake.seconds = Math.max(0.2, Number(uiRound.fakeSeconds) || 5);
       });
+
       startBtn.addEventListener("click", function () {
-        if (!ThunderXSwitchAdapter.isEnabled()) {
-          showToast("Thunder X Switch is OFF.", true);
-          return;
-        }
-        if (fakeRunning) return;
-        var t = Number(uiRound.fakeTarget);
+        if (fakeRunning || !ThunderXSwitchAdapter.isEnabled()) return;
+        const t = Number(uiRound.fakeTarget);
         if (!uiRound.fakeTarget || !isFinite(t)) {
           fTarget.focus();
           return;
         }
         fakeRunning = true;
         startFake(uiRound.fakeTarget, uiRound.fakeSeconds);
-        updateRoundBtns(toolEls);
+        renderActive();
       });
+
       stopBtn.addEventListener("click", function () {
         if (!fakeRunning) return;
         fakeRunning = false;
         stopFake();
-        updateRoundBtns(toolEls);
+        renderActive();
       });
 
-      // Switch toggle handler
-      swToggle.addEventListener("click", function () {
-        const nextState = !ThunderXSwitchAdapter.isEnabled();
-        ThunderXSwitchAdapter.setEnabled(nextState, "ui");
-      });
-
-      // Change password prompt
-      changePassBtn.addEventListener("click", function () {
-        const newP = prompt("Set a new password for Quotex TE:");
-        if (newP && newP.trim().length >= 3) {
-          setStoredPassword(newP.trim());
-          showToast("Password updated successfully!", false);
-        } else if (newP !== null) {
-          showToast("Password must be at least 3 characters.", true);
-        }
-      });
-
-      // Lock bot handler
-      lockBtn.addEventListener("click", function () {
-        clearSessionAuthentication();
-        stopFake();
-        fakeRunning = false;
-        closePanel();
-        showToast("Bot locked. Please re-enter password.", false);
-        showBluePasswordPopup(function () {
-          updateRoundBtns(toolEls);
-        });
-      });
-
-      updateRoundBtns(toolEls);
-      markPanelRows();
+      body._marketEl = card.querySelector(".market");
     }
 
-    ThunderXSwitchAdapter.subscribe(function (enabled) {
-      if (!enabled) {
+    // Subscribe to Thunder X Switch updates
+    ThunderXSwitchAdapter.subscribe((enabled) => {
+      if (!enabled && fakeRunning) {
         fakeRunning = false;
         stopFake();
-        console.log("Quotex TE: Controller disabled via Thunder X Switch");
-      } else {
-        console.log("Quotex TE: Controller enabled via Thunder X Switch");
       }
-      var toolEls = body._qxToolEls;
-      if (toolEls) updateRoundBtns(toolEls);
-      setLive(enabled);
+      renderActive();
     });
+
+    // Positioning and dragging
+    let pos = { x: window.innerWidth - 96, y: 120 };
+    try {
+      const savedPos = JSON.parse(localStorage.getItem("qte_pos") || "null");
+      if (savedPos && typeof savedPos.x === "number") pos = savedPos;
+    } catch (_) {}
 
     function place(left, top) {
       pos.x = Math.max(8, Math.min(left, window.innerWidth - 96));
       pos.y = Math.max(8, Math.min(top, window.innerHeight - 120));
       fab.style.left = pos.x + "px";
       fab.style.top = pos.y + "px";
+
       if (panel.hidden) return;
-      var rect = fab.getBoundingClientRect();
-      var width = panel.offsetWidth || 320;
-      var height = panel.offsetHeight || 280;
-      var gap = 12;
-      var panelLeft = rect.left;
-      var panelTop = rect.bottom + gap;
-      if (panelTop + height > window.innerHeight - 8) panelTop = rect.top - height - gap;
+      const width = panel.offsetWidth || 320;
+      const height = panel.offsetHeight || 280;
+      let panelLeft = pos.x;
+      let panelTop = pos.y + 76;
+
+      if (panelTop + height > window.innerHeight - 8) panelTop = pos.y - height - 12;
       if (panelTop < 8) panelTop = 8;
       if (panelLeft + width > window.innerWidth - 8) panelLeft = window.innerWidth - width - 8;
       if (panelLeft < 8) panelLeft = 8;
-      var coversIcon = panelLeft < rect.right && panelLeft + width > rect.left && panelTop < rect.bottom && panelTop + height > rect.top;
-      if (coversIcon) {
-        var shiftLeft = rect.left - width - gap;
-        panelLeft = shiftLeft >= 8 ? shiftLeft : rect.right + gap;
-      }
+
       panel.style.left = panelLeft + "px";
       panel.style.top = panelTop + "px";
     }
 
-    var pos = { x: window.innerWidth - 96, y: 120 };
-    try {
-      var savedPos = JSON.parse(localStorage.getItem("qxte_pos") || "null");
-      if (savedPos && typeof savedPos.x === "number") pos = savedPos;
-    } catch (e) {}
-
-    function runPanelAnim(frames, duration, fill, done) {
-      panelBusy = true;
-      panelBusySince = Date.now();
-      var finished = false;
-      function finish() {
-        if (finished) return;
-        finished = true;
-        panelBusy = false;
-        panelBusySince = 0;
-        done();
-      }
-      var fallbackTimer = window.setTimeout(function () {
-        if (panelBusy) finish();
-      }, duration + 400);
-      if (!frames || !panel.animate) {
-        clearTimeout(fallbackTimer);
-        finish();
-        return;
-      }
-      var anim;
-      try {
-        anim = panel.animate(frames, { duration: duration, fill: fill || "none" });
-      } catch (e) {
-        clearTimeout(fallbackTimer);
-        finish();
-        return;
-      }
-      if (!anim || !anim.finished) {
-        clearTimeout(fallbackTimer);
-        finish();
-        return;
-      }
-      anim.finished.then(
-        function () { clearTimeout(fallbackTimer); finish(); },
-        function () { clearTimeout(fallbackTimer); finish(); }
-      );
-    }
-
-    function openPanel(animate) {
-      ensureMounted();
-      if (panelBusy) recoverPanelShell();
+    function openPanel() {
       renderActive();
       panel.hidden = false;
       place(pos.x, pos.y);
-      resetPanelMotion();
       fab.classList.add("away");
-      if (animate === false) {
-        panel.classList.add("boot");
-        return;
-      }
-      var frames = morphFrames();
-      panel.classList.remove("boot");
-      panel.classList.add("morphing");
-      runPanelAnim(frames, 620, "none", function () {
-        panel.classList.remove("morphing");
-        panel.classList.add("boot");
-        resetPanelMotion();
-      });
     }
 
     function closePanel() {
-      ensureMounted();
-      if (panelBusy) recoverPanelShell();
-      if (panel.hidden) return;
-      var raw = morphFrames();
-      var frames = null;
-      var i;
-      if (raw) {
-        frames = [];
-        for (i = raw.length - 1; i >= 0; i--) {
-          frames.push({
-            offset: 1 - raw[i].offset,
-            transform: raw[i].transform,
-            borderRadius: raw[i].borderRadius,
-            filter: raw[i].filter,
-            easing: raw[i].easing,
-          });
-        }
-      }
-      panel.classList.remove("boot");
-      panel.classList.add("morphing");
-      runPanelAnim(frames, 480, "forwards", function () {
-        panel.getAnimations().forEach(function (anim) {
-          try { anim.cancel(); } catch (e) {}
-        });
-        panel.classList.remove("morphing");
-        resetPanelMotion();
-        panel.hidden = true;
-        fab.classList.remove("away");
-        fab.classList.remove("pop");
-        void fab.offsetWidth;
-        fab.classList.add("pop");
-      });
+      panel.hidden = true;
+      fab.classList.remove("away");
     }
 
-    var drag = null;
-    var panelDrag = null;
+    let drag = null;
+    let panelDrag = null;
 
-    const onHeadPointerDown = function (event) {
-      ensureMounted();
-      if (event.button || panel.hidden) return;
-      if (panelBusy) recoverPanelShell();
-      event.preventDefault();
-      panelDrag = {
-        id: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-        ox: pos.x,
-        oy: pos.y,
-        moved: false,
-        target: event.target,
-      };
-      head.classList.add("dragging");
-    };
-
-    const onFabPointerDown = function (event) {
-      liftWidget();
+    fab.addEventListener("pointerdown", function (event) {
       if (event.button) return;
-      if (panelBusy) recoverPanelShell();
       event.preventDefault();
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, ox: pos.x, oy: pos.y, moved: false };
       fab.classList.add("dragging");
-    };
+    });
 
-    const onWinPointerMove = function (event) {
+    head.addEventListener("pointerdown", function (event) {
+      if (event.button || panel.hidden) return;
+      event.preventDefault();
+      panelDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, ox: pos.x, oy: pos.y, moved: false, target: event.target };
+    });
+
+    window.addEventListener("pointermove", function (event) {
       if (panelDrag && event.pointerId === panelDrag.id) {
-        var pdx = event.clientX - panelDrag.x;
-        var pdy = event.clientY - panelDrag.y;
+        const pdx = event.clientX - panelDrag.x;
+        const pdy = event.clientY - panelDrag.y;
         if (!panelDrag.moved && Math.hypot(pdx, pdy) < 4) return;
         panelDrag.moved = true;
         place(panelDrag.ox + pdx, panelDrag.oy + pdy);
         return;
       }
       if (!drag || event.pointerId !== drag.id) return;
-      var dx = event.clientX - drag.x;
-      var dy = event.clientY - drag.y;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
       if (!drag.moved && Math.hypot(dx, dy) < 4) return;
       drag.moved = true;
       place(drag.ox + dx, drag.oy + dy);
-    };
+    }, true);
 
-    const onWinPointerUp = function (event) {
+    window.addEventListener("pointerup", function (event) {
       if (panelDrag && event.pointerId === panelDrag.id) {
-        var pmoved = panelDrag.moved;
-        var pt = panelDrag.target;
+        const moved = panelDrag.moved;
+        const target = panelDrag.target;
         panelDrag = null;
-        head.classList.remove("dragging");
-        if (pmoved) {
-          try { localStorage.setItem("qxte_pos", JSON.stringify(pos)); } catch (e) {}
+        if (moved) {
+          try { localStorage.setItem("qte_pos", JSON.stringify(pos)); } catch (_) {}
           return;
         }
-        if (mini.contains(pt)) closePanel();
+        if (mini && mini.contains(target)) closePanel();
         return;
       }
       if (!drag || event.pointerId !== drag.id) return;
-      var moved = drag.moved;
+      const moved = drag.moved;
       drag = null;
       fab.classList.remove("dragging");
       if (moved) {
-        try { localStorage.setItem("qxte_pos", JSON.stringify(pos)); } catch (e) {}
+        try { localStorage.setItem("qte_pos", JSON.stringify(pos)); } catch (_) {}
         return;
       }
-      if (!panel.hidden) {
-        closePanel();
-        return;
-      }
-      openPanel(true);
-    };
+      if (!panel.hidden) closePanel();
+      else openPanel();
+    }, true);
 
-    const onWinPointerCancel = function (event) {
-      if (panelDrag && event.pointerId === panelDrag.id) {
-        clearDragState();
-        return;
-      }
-      if (!drag || event.pointerId !== drag.id) return;
-      clearDragState();
-    };
+    mini.addEventListener("click", closePanel);
 
-    const onWinVisibilityChange = function () {
-      if (document.visibilityState === "visible") {
-        clearDragState();
-        liftWidget();
-      }
-    };
-
-    const onWinBlur = function () { clearDragState(); };
-
-    head.addEventListener("pointerdown", onHeadPointerDown);
-    fab.addEventListener("pointerdown", onFabPointerDown);
-    window.addEventListener("pointermove", onWinPointerMove, true);
-    window.addEventListener("pointerup", onWinPointerUp, true);
-    window.addEventListener("pointercancel", onWinPointerCancel, true);
-    window.addEventListener("visibilitychange", onWinVisibilityChange);
-    window.addEventListener("blur", onWinBlur);
-
-    host.style.cssText = "position:relative;z-index:2147483647";
-    setLive(ThunderXSwitchAdapter.isEnabled());
-    liftWidget();
+    document.body.appendChild(host);
     place(pos.x, pos.y);
 
-    var liftObs = null;
-    try {
-      liftObs = new MutationObserver(function () { liftWidget(); });
-      liftObs.observe(host, { attributes: true, attributeFilter: ["inert", "aria-hidden"] });
-    } catch (e) {}
+    setInterval(function () {
+      if (body._marketEl && state.asset) {
+        body._marketEl.textContent = fmtAsset(state.asset);
+      }
+    }, 600);
 
-    loadRoundUi();
-
-    var liftInterval = setInterval(liftWidget, 300);
-    var updateInterval = setInterval(function () {
-      var toolEls = body._qxToolEls;
-      if (!toolEls || !toolEls.market) return;
-      toolEls.market.textContent = state.asset ? fmtAsset(state.asset) : "Waiting for data…";
-    }, 500);
-
-    console.log(`${BRAND_NAME} active and unlocked. Switch State:`, ThunderXSwitchAdapter.isEnabled() ? "ON" : "OFF");
+    console.log("[Quotex TE] Initialized successfully with Thunder X Switch and Password Protection.");
   }
 
-  // Launch with Blue Password Popup
-  showBluePasswordPopup(startQuotexTE);
+  // ===================================================================
+  // 5. APPLICATION LAUNCH SEQUENCE
+  // ===================================================================
+  // Require password before enabling controls or displaying UI
+  showPasswordPopup(startQuotexTE);
 })();
