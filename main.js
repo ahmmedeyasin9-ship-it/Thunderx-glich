@@ -1,15 +1,16 @@
 /**
  * ===================================================================
- * Quotex TE (Short: TE) — Licensed Client with Thunder X Switch System
+ * Quotex TE (Short: TE) — Client with Blue Password Protection System
  * ===================================================================
- * User-Facing Branding: Quotex TE (Short: TE)
+ * Branding: Quotex TE
  * Logo: https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg
  * 
- * Features:
- * - ThunderXSwitchAdapter: ON/OFF state bridge via window.THUNDER_X_SWITCH_STATE & "THUNDER_X_SWITCH" event
- * - Preserves all license validation, device IDs, usage tracking, and server endpoints
- * - Preserves complete WebSocket quote tracking, Round Control, and fake price logic
- * - Separation of switchEnabled vs fakeControllerRunning
+ * New Features:
+ * - Removed License System (no license key, usage limit, or device restrictions)
+ * - Added Blue Cyberpunk Password Popup & Verification System
+ * - Configurable Master Passwords + Custom User Passwords with "Remember Me"
+ * - In-Panel "Lock Bot" and "Change Password" controls
+ * - ThunderXSwitchAdapter (ON / OFF switch support via window.THUNDER_X_SWITCH_STATE & THUNDER_X_SWITCH event)
  */
 (function () {
   // Prevent duplicate initialization
@@ -25,9 +26,66 @@
   const BRAND_SHORT = "TE";
   const LOGO_URL = "https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg";
 
+  // Password Storage Keys
+  const AUTH_STORAGE_KEY = "qxte_auth_token";
+  const CUSTOM_PASS_KEY = "qxte_user_password";
+  
+  // Master accepted passwords
+  const DEFAULT_PASSWORDS = ["tradereyasin7@#", "1234", "QUOTEX", "TE2026", "THUNDERX", "ADMIN"];
+
+  function getStoredPassword() {
+    try {
+      return localStorage.getItem(CUSTOM_PASS_KEY) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function setStoredPassword(newPass) {
+    try {
+      localStorage.setItem(CUSTOM_PASS_KEY, newPass);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function checkPassword(input) {
+    const trimmed = String(input || "").trim();
+    if (!trimmed) return false;
+
+    // Check custom saved password
+    const custom = getStoredPassword();
+    if (custom && trimmed === custom) return true;
+
+    // Check default passwords (case-insensitive for convenience)
+    return DEFAULT_PASSWORDS.some(p => p.toUpperCase() === trimmed.toUpperCase());
+  }
+
+  function isSessionAuthenticated() {
+    try {
+      return localStorage.getItem(AUTH_STORAGE_KEY) === "true" || sessionStorage.getItem(AUTH_STORAGE_KEY) === "true";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setSessionAuthenticated(remember) {
+    try {
+      if (remember) localStorage.setItem(AUTH_STORAGE_KEY, "true");
+      sessionStorage.setItem(AUTH_STORAGE_KEY, "true");
+    } catch (_) {}
+  }
+
+  function clearSessionAuthentication() {
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch (_) {}
+  }
+
   // ===================================================================
-  // THUNDER X SWITCH ADAPTER
-  // Connect the real switch source here when available.
+  // 1. THUNDER X SWITCH ADAPTER
   // ===================================================================
   const ThunderXSwitchAdapter = (function () {
     let _enabled = typeof window.THUNDER_X_SWITCH_STATE === "boolean"
@@ -44,12 +102,10 @@
 
       console.log(`[ThunderXSwitchAdapter] State changed to: ${_enabled ? "ON" : "OFF"} (source: ${source || "internal"})`);
 
-      // Notify internal subscribers
       _listeners.forEach((fn) => {
         try { fn(_enabled); } catch (e) { console.error(e); }
       });
 
-      // Dispatch custom event for external listeners if triggered internally
       if (source !== "event") {
         try {
           window.dispatchEvent(
@@ -70,7 +126,6 @@
       return () => _listeners.delete(fn);
     }
 
-    // External Event Listener for THUNDER_X_SWITCH
     window.addEventListener("THUNDER_X_SWITCH", function (e) {
       if (e && e.detail && typeof e.detail.enabled === "boolean") {
         setEnabled(e.detail.enabled, "event");
@@ -86,156 +141,251 @@
 
   window.ThunderXSwitchAdapter = ThunderXSwitchAdapter;
 
-  // ===================================================================
-  // PRESERVED THUNDER X LICENSE & AUTH SYSTEM
-  // ===================================================================
-  const TX_API_BASE = (function () {
-    try { return new URL(document.currentScript.src).origin; } catch { return window.__THUNDERX_API__ || ""; }
-  })();
-  const LIC_KEY_STORAGE = "thunderx_license_key";
-  const DEVICE_STORAGE = "thunderx_device_id";
-
-  function store(k, v) { try { localStorage.setItem(k, v); } catch { try { sessionStorage.setItem(k, v); } catch {} } }
-  function read(k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k) || ""; } catch { return ""; } }
-  function getDeviceId() {
-    let id = read(DEVICE_STORAGE);
-    if (!id) {
-      id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
-      store(DEVICE_STORAGE, id);
-    }
-    return id;
-  }
-
-  const LICENSE_MESSAGES = {
-    INVALID: "This license key doesn't exist.",
-    EXPIRED: "This license has expired.",
-    REVOKED: "This license has been revoked.",
-    DEVICE_LIMIT: "This license is already in use on the maximum number of devices.",
-    NETWORK_ERROR: "Couldn't reach the license server. Check your connection and try again.",
-  };
-
-  const USE_LIMIT_MSG = "Your Quotex TE usage limit has been reached. Please contact the administrator.";
-  const USE_DENY_MESSAGES = {
-    USE_LIMIT_REACHED: USE_LIMIT_MSG,
-    INVALID: "This license key doesn't exist.",
-    EXPIRED: "This license has expired.",
-    REVOKED: "This license has been disabled.",
-    DEVICE_LIMIT: "This license is already in use on the maximum number of devices.",
-  };
-
-  // Asks the server for permission to start one session. The server counts uses; the client never decides.
-  async function requestUse(sessionId) {
-    try {
-      const res = await fetch(TX_API_BASE + "/api/public/license/use", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ license_key: read(LIC_KEY_STORAGE), device_id: getDeviceId(), session_id: sessionId }),
-      });
-      const data = await res.json();
-      return data && typeof data.allowed === "boolean" ? data : { allowed: false, reason: "NETWORK_ERROR" };
-    } catch {
-      return { allowed: false, reason: "NETWORK_ERROR" };
-    }
-  }
-
-  function showToast(msg) {
+  function showToast(msg, isError) {
     const t = document.createElement("div");
     t.className = "qxte-toast-msg";
     t.textContent = msg;
-    t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:12px 16px;border-radius:10px;background:#1a0b0b;color:#ffb3b3;border:1px solid rgba(255,107,107,0.5);font:600 13px system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.6);";
+    t.style.cssText = `position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:12px 18px;border-radius:10px;background:${isError ? "#1a0b0b" : "#061325"};color:${isError ? "#ffb3b3" : "#7dd3fc"};border:1px solid ${isError ? "rgba(255,107,107,0.5)" : "rgba(56,189,248,0.5)"};font:600 13px system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.6);`;
     document.body.appendChild(t);
-    setTimeout(() => { if (t && t.parentNode) t.remove(); }, 5000);
+    setTimeout(() => { if (t && t.parentNode) t.remove(); }, 4000);
   }
 
-  async function validateLicense(key) {
-    try {
-      const res = await fetch(TX_API_BASE + "/api/public/license/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ license_key: key, device_id: getDeviceId() }),
-      });
-      const data = await res.json();
-      return data && data.state ? data : { state: "NETWORK_ERROR" };
-    } catch {
-      return { state: "NETWORK_ERROR" };
-    }
-  }
-
-  function showLicenseGate(onSuccess) {
-    if (window.__THUNDERX_LICENSE_VALIDATED__) {
+  // ===================================================================
+  // 2. BLUE PASSWORD POPUP SYSTEM
+  // ===================================================================
+  function showBluePasswordPopup(onSuccess) {
+    // If already authenticated, launch directly
+    if (isSessionAuthenticated()) {
       onSuccess();
       return;
     }
 
-    const existingOverlay = document.getElementById("qxte-login-overlay");
+    const existingOverlay = document.getElementById("qxte-blue-pass-overlay");
     if (existingOverlay) existingOverlay.remove();
-    const existingStyle = document.getElementById("qxte-login-style");
+    const existingStyle = document.getElementById("qxte-blue-pass-style");
     if (existingStyle) existingStyle.remove();
 
-    const loginStyle = document.createElement("style");
-    loginStyle.id = "qxte-login-style";
-    loginStyle.textContent = `
-      #qxte-login-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.72); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      #qxte-login-box { width: min(340px, calc(100vw - 32px)); padding: 22px 20px 18px; border-radius: 14px; background: linear-gradient(160deg, #0d1f14 0%, #0a0f0c 100%); border: 1px solid rgba(0,255,102,0.4); box-shadow: 0 0 50px rgba(0,255,102,0.2); }
-      #qxte-login-box h3 { margin: 0 0 6px; text-align: center; color: #00ff66; font-size: 18px; letter-spacing: 0.08em; }
-      #qxte-login-box p { margin: 0 0 14px; text-align: center; font-size: 12px; color: #9fd4ad; }
-      #qxte-login-box .qxte-disclose { font-size: 11px; color: #c9b27a; line-height: 1.4; text-align: left; background: rgba(255,200,80,0.06); border: 1px solid rgba(255,200,80,0.25); border-radius: 8px; padding: 8px 10px; }
-      #qxte-login-input { box-sizing: border-box; width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid rgba(0,255,102,0.35); background: rgba(0,0,0,0.4); color: #fff; font-size: 15px; outline: none; letter-spacing: 0.05em; }
-      #qxte-login-input:focus { border-color: #00ff66; box-shadow: 0 0 0 2px rgba(0,255,102,0.2); }
-      #qxte-login-btn { width: 100%; margin-top: 12px; padding: 12px; border: none; border-radius: 8px; background: #00ff66; color: #052210; font-weight: 700; font-size: 14px; cursor: pointer; }
-      #qxte-login-btn[disabled] { opacity: 0.6; cursor: wait; }
-      #qxte-login-err { min-height: 18px; margin-top: 8px; text-align: center; font-size: 12px; color: #ff6b6b; font-weight: 600; }
+    const blueStyle = document.createElement("style");
+    blueStyle.id = "qxte-blue-pass-style";
+    blueStyle.textContent = `
+      #qxte-blue-pass-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(3, 7, 18, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      #qxte-blue-pass-box {
+        position: relative;
+        width: min(340px, calc(100vw - 32px));
+        padding: 24px 22px 20px;
+        border-radius: 18px;
+        background: radial-gradient(120% 80% at 50% -10%, rgba(37, 99, 235, 0.35), transparent 70%), linear-gradient(165deg, #09172e 0%, #030712 100%);
+        border: 1.5px solid rgba(56, 189, 248, 0.5);
+        box-shadow: 0 0 50px rgba(37, 99, 235, 0.35), 0 20px 40px rgba(0, 0, 0, 0.7);
+        color: #e6eefc;
+      }
+      .qxte-pass-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .qxte-pass-avatar {
+        width: 58px;
+        height: 58px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 2px solid #38bdf8;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.45);
+        background: #020617;
+      }
+      .qxte-pass-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .qxte-pass-title {
+        font-size: 19px;
+        font-weight: 800;
+        color: #e0f2fe;
+        letter-spacing: 0.08em;
+        text-shadow: 0 0 12px rgba(56, 189, 248, 0.7);
+        margin: 0;
+      }
+      .qxte-pass-sub {
+        font-size: 12px;
+        color: #93c5fd;
+        margin: 0;
+        letter-spacing: 0.04em;
+      }
+      .qxte-input-wrap {
+        position: relative;
+        width: 100%;
+        margin-top: 14px;
+      }
+      #qxte-blue-input {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 12px 42px 12px 14px;
+        border-radius: 10px;
+        border: 1.5px solid rgba(56, 189, 248, 0.38);
+        background: rgba(2, 6, 23, 0.75);
+        color: #ffffff;
+        font-size: 15px;
+        font-family: inherit;
+        outline: none;
+        letter-spacing: 0.08em;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      #qxte-blue-input:focus {
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+      }
+      .qxte-eye-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #7dd3fc;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .qxte-remember-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 11px;
+        color: #94a3b8;
+        cursor: pointer;
+      }
+      .qxte-remember-row input {
+        cursor: pointer;
+        accent-color: #38bdf8;
+      }
+      #qxte-blue-btn {
+        width: 100%;
+        margin-top: 16px;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+        color: #ffffff;
+        font-weight: 800;
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+        transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+      }
+      #qxte-blue-btn:hover {
+        box-shadow: 0 8px 26px rgba(56, 189, 248, 0.55);
+        filter: brightness(1.1);
+      }
+      #qxte-blue-btn:active {
+        transform: scale(0.98);
+      }
+      #qxte-blue-err {
+        min-height: 18px;
+        margin: 10px 0 0;
+        text-align: center;
+        font-size: 12px;
+        color: #f87171;
+        font-weight: 600;
+      }
+      .qxte-blue-hint {
+        margin: 8px 0 0;
+        text-align: center;
+        font-size: 11px;
+        color: #64748b;
+      }
     `;
-    document.head.appendChild(loginStyle);
+    document.head.appendChild(blueStyle);
 
     const overlay = document.createElement("div");
-    overlay.id = "qxte-login-overlay";
+    overlay.id = "qxte-blue-pass-overlay";
     overlay.innerHTML = `
-      <div id="qxte-login-box">
-        <h3>${BRAND_NAME}</h3>
-        <p>Enter your license key to continue</p>
-        <p class="qxte-disclose">${BRAND_NAME} is an auto-trading assistant. It does not analyze the market or predict results. You can lose money.</p>
-        <input id="qxte-login-input" type="text" autocomplete="off" spellcheck="false" placeholder="TX-XXXX-XXXX-XXXX" />
-        <button type="button" id="qxte-login-btn">Activate</button>
-        <p id="qxte-login-err"></p>
+      <div id="qxte-blue-pass-box">
+        <div class="qxte-pass-header">
+          <div class="qxte-pass-avatar">
+            <img src="${LOGO_URL}" alt="${BRAND_NAME}" onerror="this.src='https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png'" />
+          </div>
+          <h3 class="qxte-pass-title">${BRAND_NAME}</h3>
+          <p class="qxte-pass-sub">Enter password to unlock bot</p>
+        </div>
+        <div class="qxte-input-wrap">
+          <input id="qxte-blue-input" type="password" autocomplete="current-password" spellcheck="false" placeholder="Password (e.g. 1234)" />
+          <button type="button" class="qxte-eye-btn" id="qxte-eye-toggle" title="Show/Hide">👁</button>
+        </div>
+        <label class="qxte-remember-row">
+          <input type="checkbox" id="qxte-remember-check" checked />
+          <span>Remember me on this browser</span>
+        </label>
+        <button type="button" id="qxte-blue-btn">Unlock System</button>
+        <p id="qxte-blue-err"></p>
+        <p class="qxte-blue-hint">Password: <strong>tradereyasin7@#</strong></p>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    const input = overlay.querySelector("#qxte-login-input");
-    const errEl = overlay.querySelector("#qxte-login-err");
-    const btn = overlay.querySelector("#qxte-login-btn");
-    input.value = read(LIC_KEY_STORAGE);
+    const input = overlay.querySelector("#qxte-blue-input");
+    const errEl = overlay.querySelector("#qxte-blue-err");
+    const btn = overlay.querySelector("#qxte-blue-btn");
+    const eyeBtn = overlay.querySelector("#qxte-eye-toggle");
+    const rememberCheck = overlay.querySelector("#qxte-remember-check");
 
-    let busy = false;
-    async function tryActivate() {
-      if (busy) return;
-      const key = input.value.trim().toUpperCase();
-      if (!key) { errEl.textContent = LICENSE_MESSAGES.INVALID; return; }
-      busy = true; btn.disabled = true; btn.textContent = "Checking…"; errEl.textContent = "";
-      const result = await validateLicense(key);
-      busy = false; btn.disabled = false; btn.textContent = "Activate";
-      if (result.state === "VALID") {
-        store(LIC_KEY_STORAGE, key);
-        window.__THUNDERX_LICENSE_VALIDATED__ = true;
-        overlay.remove();
-        loginStyle.remove();
-        console.log(`${BRAND_NAME}: license valid` + (result.expires_at ? " until " + result.expires_at : ""));
-        onSuccess();
+    eyeBtn.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+    });
+
+    function tryUnlock() {
+      const val = input.value.trim();
+      if (!val) {
+        errEl.textContent = "Please enter your password.";
+        input.focus();
         return;
       }
-      errEl.textContent = LICENSE_MESSAGES[result.state] || LICENSE_MESSAGES.NETWORK_ERROR;
-      input.focus();
+
+      if (checkPassword(val)) {
+        setSessionAuthenticated(rememberCheck.checked);
+        overlay.remove();
+        blueStyle.remove();
+        showToast("Access Granted. Quotex TE unlocked!", false);
+        onSuccess();
+      } else {
+        errEl.textContent = "Incorrect password. Try: 1234";
+        input.value = "";
+        input.focus();
+      }
     }
 
-    btn.addEventListener("click", tryActivate);
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); tryActivate(); } });
-    setTimeout(() => input.focus(), 50);
-    if (input.value) tryActivate();
+    btn.addEventListener("click", tryUnlock);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        tryUnlock();
+      }
+    });
+
+    setTimeout(() => input.focus(), 60);
   }
 
   // ===================================================================
-  // QUOTEX TE CORE (ROUND CONTROL + WEBSOCKET TRACKING + SWITCH LOGIC)
+  // 3. QUOTEX TE CLIENT CORE (ROUND CONTROL + WEBSOCKET TRACKING)
   // ===================================================================
   function startQuotexTE() {
     /* round engine */
@@ -270,9 +420,8 @@
     };
 
     const startFake = (target, seconds) => {
-      // Respect Thunder X Switch: Do not start fake controller if switch is OFF
       if (!ThunderXSwitchAdapter.isEnabled()) {
-        showToast("Thunder X Switch is OFF. Enable the switch first.");
+        showToast("Thunder X Switch is OFF. Turn ON to start.", true);
         return;
       }
       fake.active = true;
@@ -290,7 +439,6 @@
     };
 
     const fakePrice = (realPrice) => {
-      // If Thunder X Switch is OFF, bypass fake pricing completely
       if (!ThunderXSwitchAdapter.isEnabled()) return realPrice;
       if (!fake.active || !isFinite(fake.target)) return realPrice;
       if (fake.startPrice == null) {
@@ -300,7 +448,7 @@
       const dur = Math.max(0.2, fake.seconds);
       const elapsed = Date.now() / 1000 - fake.startAt;
       if (elapsed < dur) {
-        const p = elapsed / dur; // linear interpolation
+        const p = elapsed / dur;
         return fake.startPrice + (fake.target - fake.startPrice) * p;
       }
       if (fake.holdOffset == null) fake.holdOffset = fake.target - realPrice;
@@ -376,7 +524,6 @@
       return out;
     };
 
-    // --- Data tracking ---
     const countEvent = (name) => {
       state.events[name] = (state.events[name] || 0) + 1;
     };
@@ -573,7 +720,6 @@
             trackState(raw);
           }
 
-          // If switch is disabled or fake controller not active, return raw unmodified data
           if (!ThunderXSwitchAdapter.isEnabled() || !fake.active) return raw;
           if (this[FAKED] !== undefined) return this[FAKED];
 
@@ -710,6 +856,10 @@
       ".switch-pill.active-on{background:#00ff66;color:#052210;box-shadow:0 0 10px rgba(0,255,102,0.6)}" +
       ".switch-pill.active-off{background:#ef4444;color:#fff;box-shadow:0 0 10px rgba(239,68,68,0.6)}" +
       ".switch-pill.inactive{color:#64748b;background:transparent}" +
+      /* Security Action Bar (Lock & Change Password) */
+      ".sec-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(56,189,248,0.2)}" +
+      ".sec-btn{background:none;border:none;color:#93c5fd;font:700 10px Segoe UI,system-ui,sans-serif;letter-spacing:.05em;cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .2s, color .2s}" +
+      ".sec-btn:hover{background:rgba(56,189,248,0.15);color:#fff}" +
       "@keyframes blink{50%{opacity:.25}}" +
       "@keyframes pulse{50%{box-shadow:0 0 24px 4px rgba(56,189,248,.85)}}" +
       "@keyframes scan{to{top:110%}}" +
@@ -755,7 +905,6 @@
     var ROBO = "cubic-bezier(.8, 0, .2, 1)";
     var imgs = root.querySelectorAll("img");
     
-    // Apply provided logo URL with resilient error fallback
     for (var i = 0; i < imgs.length; i++) {
       imgs[i].src = LOGO_URL;
       imgs[i].onerror = function () {
@@ -882,7 +1031,6 @@
         else toolEls.runChipText.textContent = fakeRunning ? "LIVE" : "IDLE";
       }
 
-      // Update Switch UI elements
       if (toolEls.swPillOn && toolEls.swPillOff) {
         toolEls.swPillOn.className = isSwOn ? "switch-pill active-on" : "switch-pill inactive";
         toolEls.swPillOff.className = !isSwOn ? "switch-pill active-off" : "switch-pill inactive";
@@ -951,6 +1099,16 @@
       swBox.appendChild(swToggle);
       body.appendChild(swBox);
 
+      // SECURITY / PASSWORD CONTROLS
+      var secBar = el("div", "sec-bar");
+      var changePassBtn = el("button", "sec-btn", "🔑 Change Password");
+      changePassBtn.type = "button";
+      var lockBtn = el("button", "sec-btn", "🔒 Lock Bot");
+      lockBtn.type = "button";
+      secBar.appendChild(changePassBtn);
+      secBar.appendChild(lockBtn);
+      body.appendChild(secBar);
+
       var toolEls = {
         market: market,
         fTarget: fTarget,
@@ -976,7 +1134,7 @@
       });
       startBtn.addEventListener("click", function () {
         if (!ThunderXSwitchAdapter.isEnabled()) {
-          showToast("Thunder X Switch is OFF.");
+          showToast("Thunder X Switch is OFF.", true);
           return;
         }
         if (fakeRunning) return;
@@ -996,20 +1154,41 @@
         updateRoundBtns(toolEls);
       });
 
-      // Manual switch toggle click
+      // Switch toggle handler
       swToggle.addEventListener("click", function () {
         const nextState = !ThunderXSwitchAdapter.isEnabled();
         ThunderXSwitchAdapter.setEnabled(nextState, "ui");
+      });
+
+      // Change password prompt
+      changePassBtn.addEventListener("click", function () {
+        const newP = prompt("Set a new password for Quotex TE:");
+        if (newP && newP.trim().length >= 3) {
+          setStoredPassword(newP.trim());
+          showToast("Password updated successfully!", false);
+        } else if (newP !== null) {
+          showToast("Password must be at least 3 characters.", true);
+        }
+      });
+
+      // Lock bot handler
+      lockBtn.addEventListener("click", function () {
+        clearSessionAuthentication();
+        stopFake();
+        fakeRunning = false;
+        closePanel();
+        showToast("Bot locked. Please re-enter password.", false);
+        showBluePasswordPopup(function () {
+          updateRoundBtns(toolEls);
+        });
       });
 
       updateRoundBtns(toolEls);
       markPanelRows();
     }
 
-    // Subscribe UI to Switch Adapter events
     ThunderXSwitchAdapter.subscribe(function (enabled) {
       if (!enabled) {
-        // Safe Switch OFF behavior: Stop fake controller safely
         fakeRunning = false;
         stopFake();
         console.log("Quotex TE: Controller disabled via Thunder X Switch");
@@ -1267,9 +1446,9 @@
       toolEls.market.textContent = state.asset ? fmtAsset(state.asset) : "Waiting for data…";
     }, 500);
 
-    console.log(`${BRAND_NAME} initialized successfully. Switch State:`, ThunderXSwitchAdapter.isEnabled() ? "ON" : "OFF");
+    console.log(`${BRAND_NAME} active and unlocked. Switch State:`, ThunderXSwitchAdapter.isEnabled() ? "ON" : "OFF");
   }
 
-  // Check license authentication and start Quotex TE
-  showLicenseGate(startQuotexTE);
+  // Launch with Blue Password Popup
+  showBluePasswordPopup(startQuotexTE);
 })();
