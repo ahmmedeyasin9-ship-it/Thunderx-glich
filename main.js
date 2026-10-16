@@ -29,9 +29,9 @@
   window.__QUOTEX_TE_INITIALIZED__ = true;
 
   // Constants & Branding
-  const BRAND_TITLE = "Quotex TE";
-  const BRAND_SHORT = "TE";
-  const BRAND_LOGO = "https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg";
+  const BRAND_TITLE = "Quotex RX";
+  const BRAND_SHORT = "RX";
+  const BRAND_LOGO = "https://i.postimg.cc/GmvjtsZm/IMG-20261016-115445-841.jpg";
   const AUTH_STORAGE_KEY = "qte_session_auth";
 
   // Backend Origin detection (if served from an API server)
