@@ -3,7 +3,7 @@
  * Quotex TE — Client with Password Protection & Thunder X Switch
  * ===================================================================
  * Branding: Quotex TE (Short: TE)
- * Logo: https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg
+ * Logo: https://i.postimg.cc/GmvjtsZm/IMG-20261016-115445-841.jpg
  * 
  * Features:
  * 1. Password Protection:
