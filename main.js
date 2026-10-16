@@ -1,91 +1,93 @@
 /**
  * ===================================================================
- * THUNDER X + SECOND BOT DUAL-ENGINE SWITCH SYSTEM (INTEGRATED)
+ * Quotex TE (Short: TE) — Licensed Client with Thunder X Switch System
  * ===================================================================
- * Complete Dual-Bot Runtime with Central Switch Manager:
- * - Engine A: Thunder X (Licensed Auto-Clicker with Countdown & Settings)
- * - Engine B: Quotex ZR (Round Control Engine with Reversible WebSocket Hooks)
- * - Switch Manager: Safe switching between bots without page reload or state corruption
+ * User-Facing Branding: Quotex TE (Short: TE)
+ * Logo: https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg
+ * 
+ * Features:
+ * - ThunderXSwitchAdapter: ON/OFF state bridge via window.THUNDER_X_SWITCH_STATE & "THUNDER_X_SWITCH" event
+ * - Preserves all license validation, device IDs, usage tracking, and server endpoints
+ * - Preserves complete WebSocket quote tracking, Round Control, and fake price logic
+ * - Separation of switchEnabled vs fakeControllerRunning
  */
 (function () {
-  // Prevent duplicate system loading
-  if (window.__THUNDERX_SYSTEM_LOADED__) {
-    console.warn("Thunder X Dual-Bot System is already loaded.");
+  // Prevent duplicate initialization
+  if (window.__QUOTEX_TE_INITIALIZED__) {
+    console.warn("Quotex TE is already running.");
     return;
   }
-  window.__THUNDERX_SYSTEM_LOADED__ = true;
+  window.__QUOTEX_TE_INITIALIZED__ = true;
 
-  // Global Bot State tracking
-  window.__THUNDERX_BOT_STATE__ = window.__THUNDERX_BOT_STATE__ || "NONE";
-
-  // Central Toast Notifier
-  function showSystemToast(msg) {
-    const t = document.createElement("div");
-    t.className = "thunderx-sys-toast";
-    t.textContent = msg;
-    t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:12px 18px;border-radius:10px;background:#1a0b0b;color:#ffb3b3;border:1px solid rgba(255,107,107,0.5);font:600 13px system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.6);";
-    document.body.appendChild(t);
-    setTimeout(() => { if (t && t.parentNode) t.remove(); }, 5000);
-  }
+  // Safe Default Configuration & Branding
+  const THUNDER_X_DEFAULT_ENABLED = true;
+  const BRAND_NAME = "Quotex TE";
+  const BRAND_SHORT = "TE";
+  const LOGO_URL = "https://i.postimg.cc/QM1CqkvN/Chat-GPT-Image-Aug-27-2026-08-36-34-PM-20260828-120448.jpg";
 
   // ===================================================================
-  // CENTRAL BOT SWITCH MANAGER
+  // THUNDER X SWITCH ADAPTER
+  // Connect the real switch source here when available.
   // ===================================================================
-  window.switchBot = function (targetBot) {
-    console.log(`[Switch Manager] Switching to: ${targetBot}`);
-    try {
-      if (targetBot === "SECOND_BOT") {
-        if (window.__SECOND_BOT_ACTIVE__) {
-          console.warn("[Switch Manager] Second bot is already running.");
-          return;
-        }
+  const ThunderXSwitchAdapter = (function () {
+    let _enabled = typeof window.THUNDER_X_SWITCH_STATE === "boolean"
+      ? window.THUNDER_X_SWITCH_STATE
+      : THUNDER_X_DEFAULT_ENABLED;
 
-        // STEP 1 - 5: Stop active Thunder X session, timers, panel & clean resources
-        if (typeof window.__THUNDERX_STOP__ === "function") {
-          window.__THUNDERX_STOP__();
-        } else if (typeof window.__QX999_STOP__ === "function") {
-          window.__QX999_STOP__();
-        }
-        window.__THUNDERX_BOT_STATE__ = "NONE";
+    const _listeners = new Set();
 
-        // STEP 6: Initialize Second Bot
-        if (typeof window.__initSecondBot__ === "function") {
-          window.__initSecondBot__();
-          window.__THUNDERX_BOT_STATE__ = "SECOND_BOT";
-        } else {
-          throw new Error("Second bot initialization function not found.");
-        }
-      } else if (targetBot === "THUNDER_X") {
-        if (window.__QX999_ACTIVE__) {
-          console.warn("[Switch Manager] Thunder X is already running.");
-          return;
-        }
+    function setEnabled(val, source) {
+      const next = Boolean(val);
+      if (_enabled === next) return;
+      _enabled = next;
+      window.THUNDER_X_SWITCH_STATE = _enabled;
 
-        // Stop Second Bot & clean resources
-        if (typeof window.__SECOND_BOT_STOP__ === "function") {
-          window.__SECOND_BOT_STOP__();
-        }
-        window.__THUNDERX_BOT_STATE__ = "NONE";
+      console.log(`[ThunderXSwitchAdapter] State changed to: ${_enabled ? "ON" : "OFF"} (source: ${source || "internal"})`);
 
-        // Initialize Thunder X
-        if (typeof window.__initThunderX__ === "function") {
-          window.__initThunderX__();
-          window.__THUNDERX_BOT_STATE__ = "THUNDER_X";
-        } else {
-          throw new Error("Thunder X initialization function not found.");
-        }
-      } else {
-        console.warn("[Switch Manager] Unknown target bot:", targetBot);
+      // Notify internal subscribers
+      _listeners.forEach((fn) => {
+        try { fn(_enabled); } catch (e) { console.error(e); }
+      });
+
+      // Dispatch custom event for external listeners if triggered internally
+      if (source !== "event") {
+        try {
+          window.dispatchEvent(
+            new CustomEvent("THUNDER_X_SWITCH", {
+              detail: { enabled: _enabled }
+            })
+          );
+        } catch (_) {}
       }
-    } catch (err) {
-      console.error("[Switch Manager] Error during bot switch:", err);
-      const failMsg = targetBot === "SECOND_BOT" ? "Second bot failed to start." : "Thunder X failed to start.";
-      showSystemToast(failMsg);
     }
-  };
+
+    function isEnabled() {
+      return _enabled;
+    }
+
+    function subscribe(fn) {
+      _listeners.add(fn);
+      return () => _listeners.delete(fn);
+    }
+
+    // External Event Listener for THUNDER_X_SWITCH
+    window.addEventListener("THUNDER_X_SWITCH", function (e) {
+      if (e && e.detail && typeof e.detail.enabled === "boolean") {
+        setEnabled(e.detail.enabled, "event");
+      }
+    });
+
+    return {
+      setEnabled,
+      isEnabled,
+      subscribe,
+    };
+  })();
+
+  window.ThunderXSwitchAdapter = ThunderXSwitchAdapter;
 
   // ===================================================================
-  // ENGINE A: THUNDER X (COMPLETE SOURCE)
+  // PRESERVED THUNDER X LICENSE & AUTH SYSTEM
   // ===================================================================
   const TX_API_BASE = (function () {
     try { return new URL(document.currentScript.src).origin; } catch { return window.__THUNDERX_API__ || ""; }
@@ -112,7 +114,7 @@
     NETWORK_ERROR: "Couldn't reach the license server. Check your connection and try again.",
   };
 
-  const USE_LIMIT_MSG = "Your Thunder X usage limit has been reached. Please contact the administrator.";
+  const USE_LIMIT_MSG = "Your Quotex TE usage limit has been reached. Please contact the administrator.";
   const USE_DENY_MESSAGES = {
     USE_LIMIT_REACHED: USE_LIMIT_MSG,
     INVALID: "This license key doesn't exist.",
@@ -136,6 +138,15 @@
     }
   }
 
+  function showToast(msg) {
+    const t = document.createElement("div");
+    t.className = "qxte-toast-msg";
+    t.textContent = msg;
+    t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:12px 16px;border-radius:10px;background:#1a0b0b;color:#ffb3b3;border:1px solid rgba(255,107,107,0.5);font:600 13px system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,0.6);";
+    document.body.appendChild(t);
+    setTimeout(() => { if (t && t.parentNode) t.remove(); }, 5000);
+  }
+
   async function validateLicense(key) {
     try {
       const res = await fetch(TX_API_BASE + "/api/public/license/validate", {
@@ -156,44 +167,44 @@
       return;
     }
 
-    const existingOverlay = document.getElementById("qx999-login-overlay");
+    const existingOverlay = document.getElementById("qxte-login-overlay");
     if (existingOverlay) existingOverlay.remove();
-    const existingStyle = document.getElementById("qx999-login-style");
+    const existingStyle = document.getElementById("qxte-login-style");
     if (existingStyle) existingStyle.remove();
 
     const loginStyle = document.createElement("style");
-    loginStyle.id = "qx999-login-style";
+    loginStyle.id = "qxte-login-style";
     loginStyle.textContent = `
-      #qx999-login-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.72); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      #qx999-login-box { width: min(340px, calc(100vw - 32px)); padding: 22px 20px 18px; border-radius: 14px; background: linear-gradient(160deg, #0d1f14 0%, #0a0f0c 100%); border: 1px solid rgba(0,255,102,0.4); box-shadow: 0 0 50px rgba(0,255,102,0.2); }
-      #qx999-login-box h3 { margin: 0 0 6px; text-align: center; color: #00ff66; font-size: 18px; letter-spacing: 0.08em; }
-      #qx999-login-box p { margin: 0 0 14px; text-align: center; font-size: 12px; color: #9fd4ad; }
-      #qx999-login-box .qx999-disclose { font-size: 11px; color: #c9b27a; line-height: 1.4; text-align: left; background: rgba(255,200,80,0.06); border: 1px solid rgba(255,200,80,0.25); border-radius: 8px; padding: 8px 10px; }
-      #qx999-login-input { box-sizing: border-box; width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid rgba(0,255,102,0.35); background: rgba(0,0,0,0.4); color: #fff; font-size: 15px; outline: none; letter-spacing: 0.05em; }
-      #qx999-login-input:focus { border-color: #00ff66; box-shadow: 0 0 0 2px rgba(0,255,102,0.2); }
-      #qx999-login-btn { width: 100%; margin-top: 12px; padding: 12px; border: none; border-radius: 8px; background: #00ff66; color: #052210; font-weight: 700; font-size: 14px; cursor: pointer; }
-      #qx999-login-btn[disabled] { opacity: 0.6; cursor: wait; }
-      #qx999-login-err { min-height: 18px; margin-top: 8px; text-align: center; font-size: 12px; color: #ff6b6b; font-weight: 600; }
+      #qxte-login-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.72); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      #qxte-login-box { width: min(340px, calc(100vw - 32px)); padding: 22px 20px 18px; border-radius: 14px; background: linear-gradient(160deg, #0d1f14 0%, #0a0f0c 100%); border: 1px solid rgba(0,255,102,0.4); box-shadow: 0 0 50px rgba(0,255,102,0.2); }
+      #qxte-login-box h3 { margin: 0 0 6px; text-align: center; color: #00ff66; font-size: 18px; letter-spacing: 0.08em; }
+      #qxte-login-box p { margin: 0 0 14px; text-align: center; font-size: 12px; color: #9fd4ad; }
+      #qxte-login-box .qxte-disclose { font-size: 11px; color: #c9b27a; line-height: 1.4; text-align: left; background: rgba(255,200,80,0.06); border: 1px solid rgba(255,200,80,0.25); border-radius: 8px; padding: 8px 10px; }
+      #qxte-login-input { box-sizing: border-box; width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid rgba(0,255,102,0.35); background: rgba(0,0,0,0.4); color: #fff; font-size: 15px; outline: none; letter-spacing: 0.05em; }
+      #qxte-login-input:focus { border-color: #00ff66; box-shadow: 0 0 0 2px rgba(0,255,102,0.2); }
+      #qxte-login-btn { width: 100%; margin-top: 12px; padding: 12px; border: none; border-radius: 8px; background: #00ff66; color: #052210; font-weight: 700; font-size: 14px; cursor: pointer; }
+      #qxte-login-btn[disabled] { opacity: 0.6; cursor: wait; }
+      #qxte-login-err { min-height: 18px; margin-top: 8px; text-align: center; font-size: 12px; color: #ff6b6b; font-weight: 600; }
     `;
     document.head.appendChild(loginStyle);
 
     const overlay = document.createElement("div");
-    overlay.id = "qx999-login-overlay";
+    overlay.id = "qxte-login-overlay";
     overlay.innerHTML = `
-      <div id="qx999-login-box">
-        <h3>Thunder X</h3>
+      <div id="qxte-login-box">
+        <h3>${BRAND_NAME}</h3>
         <p>Enter your license key to continue</p>
-        <p class="qx999-disclose">Thunder X is an auto-clicker. After a countdown it clicks Up, Down, or a random side. It does not analyze the market or predict results. You can lose money.</p>
-        <input id="qx999-login-input" type="text" autocomplete="off" spellcheck="false" placeholder="TX-XXXX-XXXX-XXXX" />
-        <button type="button" id="qx999-login-btn">Activate</button>
-        <p id="qx999-login-err"></p>
+        <p class="qxte-disclose">${BRAND_NAME} is an auto-trading assistant. It does not analyze the market or predict results. You can lose money.</p>
+        <input id="qxte-login-input" type="text" autocomplete="off" spellcheck="false" placeholder="TX-XXXX-XXXX-XXXX" />
+        <button type="button" id="qxte-login-btn">Activate</button>
+        <p id="qxte-login-err"></p>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    const input = overlay.querySelector("#qx999-login-input");
-    const errEl = overlay.querySelector("#qx999-login-err");
-    const btn = overlay.querySelector("#qx999-login-btn");
+    const input = overlay.querySelector("#qxte-login-input");
+    const errEl = overlay.querySelector("#qxte-login-err");
+    const btn = overlay.querySelector("#qxte-login-btn");
     input.value = read(LIC_KEY_STORAGE);
 
     let busy = false;
@@ -209,7 +220,7 @@
         window.__THUNDERX_LICENSE_VALIDATED__ = true;
         overlay.remove();
         loginStyle.remove();
-        console.log("Thunder X: license valid" + (result.expires_at ? " until " + result.expires_at : ""));
+        console.log(`${BRAND_NAME}: license valid` + (result.expires_at ? " until " + result.expires_at : ""));
         onSuccess();
         return;
       }
@@ -223,753 +234,13 @@
     if (input.value) tryActivate();
   }
 
-  function initQX999() {
-    if (window.__QX999_ACTIVE__) return;
-    window.__QX999_ACTIVE__ = true;
-    window.__THUNDERX_BOT_STATE__ = "THUNDER_X";
-
-    const LOGO_URL =
-      "https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png";
-    const LABEL = "Thunder X";
-    const STORAGE_KEY = "qx999_settings_v1";
-    const TAP_REQUIRED = 3;
-    const TAP_SETTLE_MS = 380;
-    const TAP_SEQUENCE_MS = 650;
-
-    const defaults = { delaySec: 10, afterTradeScanSec: 0, direction: "random" };
-
-    function parseStored(raw) {
-      if (!raw) return null;
-      const s = JSON.parse(raw);
-      const delaySec = Math.max(1, Math.min(120, Number(s.delaySec) || defaults.delaySec));
-      const afterTradeScanSec = Math.max(
-        0,
-        Math.min(300, Math.round(Number(s.afterTradeScanSec) || 0))
-      );
-      const direction = ["up", "down", "random"].includes(s.direction)
-        ? s.direction
-        : defaults.direction;
-      return { delaySec, afterTradeScanSec, direction };
-    }
-
-    function loadSettings() {
-      const sources = [
-        () => localStorage.getItem(STORAGE_KEY),
-        () => sessionStorage.getItem(STORAGE_KEY),
-        () => {
-          const b = window.__QX999_SETTINGS_BACKUP__;
-          return b ? JSON.stringify(b) : null;
-        },
-      ];
-      for (const get of sources) {
-        try {
-          const parsed = parseStored(get());
-          if (parsed) return parsed;
-        } catch {
-          /* try next */
-        }
-      }
-      return { ...defaults };
-    }
-
-    function saveSettings(s) {
-      const json = JSON.stringify(s);
-      window.__QX999_SETTINGS_BACKUP__ = { ...s };
-      let ok = false;
-      try {
-        localStorage.setItem(STORAGE_KEY, json);
-        ok = true;
-      } catch {
-        /* blocked */
-      }
-      try {
-        sessionStorage.setItem(STORAGE_KEY, json);
-        ok = true;
-      } catch {
-        /* blocked */
-      }
-      return ok;
-    }
-
-    let settings = loadSettings();
-
-    const style = document.createElement("style");
-    style.id = "qx999-main-style";
-    style.textContent = `
-      #qx999-widget {
-        position: fixed;
-        z-index: 2147483646;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        cursor: grab;
-        touch-action: none;
-        user-select: none;
-        -webkit-user-select: none;
-        left: 16px;
-        top: 50%;
-        transform: translateY(-50%);
-        filter: drop-shadow(0 2px 8px rgba(0,0,0,0.45));
-        transition: filter 0.25s ease;
-      }
-      #qx999-widget.qx999-glow {
-        filter: drop-shadow(0 0 12px #00ff66) drop-shadow(0 0 28px #00ff66)
-          drop-shadow(0 0 48px rgba(0,255,102,0.55));
-      }
-      #qx999-widget:active { cursor: grabbing; }
-      #qx999-logo-wrap {
-        width: 64px;
-        height: 64px;
-        border-radius: 50%;
-        overflow: hidden;
-        background: rgba(0,0,0,0.35);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none;
-      }
-      #qx999-logo-wrap img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        pointer-events: none;
-      }
-      #qx999-label {
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        color: #fff;
-        text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-        pointer-events: none;
-      }
-      #qx999-widget.qx999-glow #qx999-label {
-        color: #b8ffd4;
-        text-shadow: 0 0 8px #00ff66, 0 0 18px #00ff66, 0 0 32px rgba(0,255,102,0.8);
-      }
-      #qx999-scan-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 2147483645;
-        pointer-events: none;
-        overflow: hidden;
-        display: none;
-      }
-      #qx999-scan-overlay.qx999-scan-on { display: block; }
-      #qx999-scan-line {
-        position: absolute;
-        left: 0;
-        width: 100%;
-        height: 5px;
-        background: linear-gradient(
-          180deg,
-          #3ad67f 0%,
-          #22c464 16%,
-          #14ad56 40%,
-          #009e4a 58%,
-          #008a40 82%,
-          rgba(0, 110, 48, 0.55) 100%
-        );
-        box-shadow:
-          0 -88px 130px rgba(0, 220, 115, 1),
-          0 -68px 100px rgba(0, 200, 100, 1),
-          0 -50px 78px rgba(0, 185, 92, 0.98),
-          0 -34px 58px rgba(0, 170, 85, 0.96),
-          0 -22px 40px rgba(0, 155, 78, 0.94),
-          0 -12px 26px rgba(0, 140, 72, 0.9),
-          0 -6px 14px rgba(0, 125, 65, 0.88),
-          0 0 28px rgba(0, 150, 75, 0.85),
-          0 0 55px rgba(0, 130, 65, 0.55);
-        top: -8%;
-        animation: qx999-scan-move 1.45s linear infinite;
-      }
-      @keyframes qx999-scan-move {
-        0% { top: -8%; }
-        100% { top: 108%; }
-      }
-      #qx999-panel {
-        position: fixed;
-        z-index: 2147483647;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        opacity: 0;
-        pointer-events: none;
-        width: min(300px, calc(100vw - 32px));
-        padding: 18px 16px 14px;
-        border-radius: 14px;
-        background: linear-gradient(160deg, #0d1f14 0%, #0a0f0c 100%);
-        border: 1px solid rgba(0,255,102,0.35);
-        box-shadow: 0 0 40px rgba(0,255,102,0.25), 0 12px 40px rgba(0,0,0,0.55);
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        color: #e8ffe8;
-      }
-      #qx999-panel.qx999-panel-open {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #qx999-panel h3 {
-        margin: 0 0 14px;
-        font-size: 16px;
-        font-weight: 700;
-        text-align: center;
-        color: #00ff66;
-        letter-spacing: 0.06em;
-      }
-      #qx999-panel .qx999-row {
-        margin-bottom: 14px;
-      }
-      #qx999-panel label {
-        display: block;
-        font-size: 12px;
-        color: #9fd4ad;
-        margin-bottom: 6px;
-      }
-      #qx999-panel .qx999-subhint {
-        margin: -2px 0 6px;
-        font-size: 10px;
-        color: #6a9a78;
-        line-height: 1.3;
-      }
-      #qx999-panel .qx999-input-block {
-        display: block;
-        width: 100%;
-      }
-      #qx999-panel .qx999-time-input {
-        box-sizing: border-box;
-        width: 100%;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(0,255,102,0.3);
-        background: rgba(0,0,0,0.35);
-        color: #fff;
-        font-size: 15px;
-        font-family: inherit;
-        outline: none;
-        -webkit-appearance: none;
-        appearance: none;
-      }
-      #qx999-panel .qx999-time-input:focus {
-        border-color: #00ff66;
-        box-shadow: 0 0 0 2px rgba(0,255,102,0.2);
-      }
-      #qx999-panel .qx999-time-input::-webkit-outer-spin-button,
-      #qx999-panel .qx999-time-input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-      #qx999-panel .qx999-time-input[type="number"] {
-        -moz-appearance: textfield;
-      }
-      #qx999-panel .qx999-save-btn {
-        flex-shrink: 0;
-        padding: 10px 14px;
-        border: none;
-        border-radius: 8px;
-        background: #00ff66;
-        color: #052210;
-        font-weight: 700;
-        font-size: 13px;
-        font-family: inherit;
-        cursor: pointer;
-      }
-      #qx999-panel .qx999-save-btn:active {
-        background: #00e65c;
-      }
-      #qx999-panel .qx999-save-btn-block {
-        display: block;
-        width: 100%;
-        margin-top: 4px;
-        padding: 12px 14px;
-        font-size: 14px;
-      }
-      #qx999-dir-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      #qx999-dir-group button {
-        padding: 11px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(0,255,102,0.25);
-        background: rgba(0,0,0,0.3);
-        color: #dfffe8;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-      }
-      #qx999-dir-group button.qx999-dir-active {
-        background: rgba(0,255,102,0.18);
-        border-color: #00ff66;
-        box-shadow: 0 0 16px rgba(0,255,102,0.35);
-        color: #00ff66;
-      }
-      #qx999-panel-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 2147483646;
-        background: rgba(0, 0, 0, 0.5);
-        opacity: 0;
-        pointer-events: none;
-      }
-      #qx999-panel-backdrop.qx999-backdrop-open {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #qx999-panel-hint {
-        margin: 10px 0 0;
-        font-size: 11px;
-        text-align: center;
-        color: #6a9a78;
-        line-height: 1.35;
-      }
-      #qx999-save-status {
-        min-height: 18px;
-        margin: 8px 0 0;
-        font-size: 12px;
-        text-align: center;
-        color: #00ff66;
-        font-weight: 600;
-      }
-      #qx999-panel button,
-      #qx999-panel input {
-        touch-action: manipulation;
-      }
-      #qx999-panel .qx999-switch-btn {
-        display: block;
-        width: 100%;
-        padding: 11px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(56, 189, 248, 0.45);
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.28) 0%, rgba(6, 182, 212, 0.28) 100%);
-        color: #7dd3fc;
-        font-weight: 700;
-        font-size: 13px;
-        font-family: inherit;
-        cursor: pointer;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        transition: all 0.2s ease;
-      }
-      #qx999-panel .qx999-switch-btn:hover {
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.55) 0%, rgba(6, 182, 212, 0.55) 100%);
-        color: #ffffff;
-        box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
-      }
-      #qx999-panel .qx999-switch-btn:active {
-        transform: scale(0.98);
-      }
-    `;
-    document.head.appendChild(style);
-
-    const scanOverlay = document.createElement("div");
-    scanOverlay.id = "qx999-scan-overlay";
-    scanOverlay.innerHTML = '<div id="qx999-scan-line"></div>';
-    document.body.appendChild(scanOverlay);
-
-    const backdrop = document.createElement("div");
-    backdrop.id = "qx999-panel-backdrop";
-
-    const panel = document.createElement("div");
-    panel.id = "qx999-panel";
-    panel.innerHTML = `
-      <h3>Thunder X Settings</h3>
-      <div class="qx999-row">
-        <label>Countdown before click (seconds)</label>
-        <input id="qx999-delay-input" class="qx999-time-input qx999-input-block" type="number" min="1" max="120" step="1" />
-      </div>
-      <div class="qx999-row">
-        <label>Keep running after click (seconds)</label>
-        <p class="qx999-subhint">0 = stop only when you tap the icon</p>
-        <input id="qx999-after-trade-input" class="qx999-time-input qx999-input-block" type="number" min="0" max="300" step="1" />
-      </div>
-      <div class="qx999-row">
-        <label>Click direction (no market analysis)</label>
-        <div id="qx999-dir-group">
-          <button type="button" data-dir="up">Up</button>
-          <button type="button" data-dir="down">Down</button>
-          <button type="button" data-dir="random">Random</button>
-        </div>
-      </div>
-      <button type="button" id="qx999-save-all" class="qx999-save-btn qx999-save-btn-block">Save</button>
-      <div class="qx999-row" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(0, 255, 102, 0.18);">
-        <button type="button" id="qx999-switch-bot-btn" class="qx999-switch-btn">Switch Bot</button>
-      </div>
-      <p id="qx999-save-status"></p>
-      <p id="qx999-panel-hint">3 taps on icon to open · tap outside to close</p>
-    `;
-    document.body.appendChild(backdrop);
-    document.body.appendChild(panel);
-
-    panel.addEventListener("mousedown", (e) => e.stopPropagation());
-    panel.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
-    panel.addEventListener("touchend", (e) => e.stopPropagation());
-
-    const delayInput = panel.querySelector("#qx999-delay-input");
-    const afterTradeInput = panel.querySelector("#qx999-after-trade-input");
-    const saveStatus = panel.querySelector("#qx999-save-status");
-    const dirButtons = panel.querySelectorAll("#qx999-dir-group button");
-    let saveStatusTimer = null;
-    let pendingDirection = settings.direction;
-
-    function syncDirectionUI(dir) {
-      dirButtons.forEach((btn) => {
-        btn.classList.toggle("qx999-dir-active", btn.dataset.dir === dir);
-      });
-    }
-
-    function syncPanelUI() {
-      delayInput.value = String(settings.delaySec);
-      afterTradeInput.value = String(settings.afterTradeScanSec);
-      pendingDirection = settings.direction;
-      syncDirectionUI(pendingDirection);
-    }
-
-    function openPanel() {
-      syncPanelUI();
-      backdrop.classList.add("qx999-backdrop-open");
-      panel.classList.add("qx999-panel-open");
-    }
-
-    function closePanel() {
-      backdrop.classList.remove("qx999-backdrop-open");
-      panel.classList.remove("qx999-panel-open");
-      saveStatus.textContent = "";
-    }
-
-    function parseDelayInput() {
-      const n = Number(String(delayInput.value).trim());
-      if (!Number.isFinite(n) || n < 1) return defaults.delaySec;
-      return Math.max(1, Math.min(120, Math.round(n)));
-    }
-
-    function parseAfterTradeInput() {
-      const n = Number(String(afterTradeInput.value).trim());
-      if (!Number.isFinite(n) || n < 0) return defaults.afterTradeScanSec;
-      return Math.max(0, Math.min(300, Math.round(n)));
-    }
-
-    function applyAllSettings() {
-      settings.delaySec = parseDelayInput();
-      settings.afterTradeScanSec = parseAfterTradeInput();
-      settings.direction = pendingDirection;
-      delayInput.value = String(settings.delaySec);
-      afterTradeInput.value = String(settings.afterTradeScanSec);
-      const stored = saveSettings(settings);
-      syncPanelUI();
-      closePanel();
-    }
-
-    function bindPanelAction(el, handler) {
-      let lock = false;
-      const run = (e) => {
-        if (e.cancelable) e.preventDefault();
-        e.stopPropagation();
-        if (lock) return;
-        lock = true;
-        setTimeout(() => { lock = false; }, 300);
-        handler();
-      };
-      el.addEventListener("pointerup", run);
-      el.addEventListener("click", run);
-    }
-
-    bindPanelAction(panel.querySelector("#qx999-save-all"), applyAllSettings);
-
-    // SWITCH BOT button handler
-    const switchBotBtn = panel.querySelector("#qx999-switch-bot-btn");
-    bindPanelAction(switchBotBtn, function () {
-      window.switchBot("SECOND_BOT");
-    });
-
-    function onSettingsEnter(e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        applyAllSettings();
-      }
-    }
-    delayInput.addEventListener("keydown", onSettingsEnter);
-    afterTradeInput.addEventListener("keydown", onSettingsEnter);
-
-    dirButtons.forEach((btn) => {
-      bindPanelAction(btn, () => {
-        pendingDirection = btn.dataset.dir;
-        syncDirectionUI(pendingDirection);
-      });
-    });
-
-    bindPanelAction(backdrop, closePanel);
-
-    const widget = document.createElement("div");
-    widget.id = "qx999-widget";
-    widget.innerHTML = `
-      <div id="qx999-logo-wrap"><img src="${LOGO_URL}" alt="Quotex City" draggable="false" /></div>
-      <span id="qx999-label">${LABEL}</span>
-    `;
-    document.body.appendChild(widget);
-
-    let scanActive = false;
-    let tradeTimer = null;
-    let afterTradeTimer = null;
-    let tapCount = 0;
-    let tapSettleTimer = null;
-    let lastTapAt = 0;
-
-    function getTradeButtons() {
-      const root = document.getElementById("trade-button");
-      if (!root) return { up: null, down: null };
-      return {
-        up: root.querySelector("button.JQZcs"),
-        down: root.querySelector("button.twQq3"),
-      };
-    }
-
-    function pickTradeButton() {
-      const { up, down } = getTradeButtons();
-      if (!up && !down) return null;
-      if (settings.direction === "up") return up || null;
-      if (settings.direction === "down") return down || null;
-      const pool = [up, down].filter(Boolean);
-      return pool[Math.floor(Math.random() * pool.length)];
-    }
-
-    function placeTrade() {
-      const btn = pickTradeButton();
-      if (!btn) {
-        console.error("QX999: trade button not found for direction:", settings.direction);
-        return false;
-      }
-      btn.click();
-      const side = btn.classList.contains("JQZcs") ? "UP" : "DOWN";
-      console.log("QX999 trade:", side, "| mode:", settings.direction);
-      return true;
-    }
-
-    function clearAfterTradeTimer() {
-      if (afterTradeTimer) {
-        clearTimeout(afterTradeTimer);
-        afterTradeTimer = null;
-      }
-    }
-
-    function scheduleAfterTradeScanStop() {
-      clearAfterTradeTimer();
-      if (!settings.afterTradeScanSec || settings.afterTradeScanSec <= 0) return;
-      const ms = settings.afterTradeScanSec * 1000;
-      afterTradeTimer = setTimeout(() => {
-        afterTradeTimer = null;
-        if (scanActive) {
-          stopScanSession();
-        }
-      }, ms);
-    }
-
-    function stopScanSession() {
-      widget.classList.remove("qx999-glow");
-      scanOverlay.classList.remove("qx999-scan-on");
-      scanActive = false;
-      if (tradeTimer) {
-        clearTimeout(tradeTimer);
-        tradeTimer = null;
-      }
-      clearAfterTradeTimer();
-    }
-
-    let useRequestPending = false;
-    async function startAutoTrade() {
-      if (scanActive || useRequestPending) return;
-      closePanel();
-      useRequestPending = true;
-      const sessionId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
-      let perm = await requestUse(sessionId);
-      if (!perm.allowed && perm.reason === "NETWORK_ERROR") perm = await requestUse(sessionId);
-      useRequestPending = false;
-      if (!perm.allowed) {
-        showSystemToast(USE_DENY_MESSAGES[perm.reason] || LICENSE_MESSAGES.NETWORK_ERROR);
-        return;
-      }
-      if (scanActive) return;
-      clearAfterTradeTimer();
-      scanActive = true;
-      widget.classList.add("qx999-glow");
-      scanOverlay.classList.add("qx999-scan-on");
-      const delayMs = settings.delaySec * 1000;
-
-      tradeTimer = setTimeout(() => {
-        tradeTimer = null;
-        placeTrade();
-        scheduleAfterTradeScanStop();
-      }, delayMs);
-    }
-
-    function resetTapCounter() {
-      tapCount = 0;
-      if (tapSettleTimer) {
-        clearTimeout(tapSettleTimer);
-        tapSettleTimer = null;
-      }
-    }
-
-    function registerTap() {
-      if (panel.classList.contains("qx999-panel-open")) return;
-      const now = Date.now();
-      if (now - lastTapAt > TAP_SEQUENCE_MS) tapCount = 0;
-      lastTapAt = now;
-      tapCount += 1;
-
-      if (tapSettleTimer) {
-        clearTimeout(tapSettleTimer);
-        tapSettleTimer = null;
-      }
-
-      if (tapCount >= TAP_REQUIRED) {
-        resetTapCounter();
-        openPanel();
-        return;
-      }
-
-      tapSettleTimer = setTimeout(() => {
-        tapSettleTimer = null;
-        if (tapCount === 1) {
-          if (scanActive) stopScanSession();
-          else startAutoTrade();
-        }
-        tapCount = 0;
-      }, TAP_SETTLE_MS);
-    }
-
-    let dragging = false;
-    let moved = false;
-    let startX = 0;
-    let startY = 0;
-    let startLeft = 0;
-    let startTop = 0;
-    const DRAG_THRESHOLD = 8;
-
-    function clampPosition(left, top) {
-      const rect = widget.getBoundingClientRect();
-      const maxL = window.innerWidth - rect.width;
-      const maxT = window.innerHeight - rect.height;
-      return {
-        left: Math.max(0, Math.min(left, maxL)),
-        top: Math.max(0, Math.min(top, maxT)),
-      };
-    }
-
-    function onPointerDown(clientX, clientY) {
-      dragging = true;
-      moved = false;
-      const r = widget.getBoundingClientRect();
-      startX = clientX;
-      startY = clientY;
-      startLeft = r.left;
-      startTop = r.top;
-      widget.style.transform = "none";
-      widget.style.left = startLeft + "px";
-      widget.style.top = startTop + "px";
-    }
-
-    function onPointerMove(clientX, clientY) {
-      if (!dragging) return;
-      const dx = clientX - startX;
-      const dy = clientY - startY;
-      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-        moved = true;
-      }
-      const pos = clampPosition(startLeft + dx, startTop + dy);
-      widget.style.left = pos.left + "px";
-      widget.style.top = pos.top + "px";
-    }
-
-    function onPointerUp() {
-      if (!dragging) return;
-      dragging = false;
-      if (!moved) registerTap();
-    }
-
-    const widgetMouseDown = (e) => { e.preventDefault(); onPointerDown(e.clientX, e.clientY); };
-    const widgetTouchStart = (e) => {
-      if (e.touches.length !== 1) return;
-      e.preventDefault();
-      onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
-    };
-    const docMouseMove = (e) => { onPointerMove(e.clientX, e.clientY); };
-    const docTouchMove = (e) => {
-      if (!dragging || e.touches.length !== 1) return;
-      e.preventDefault();
-      onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
-    };
-
-    widget.addEventListener("mousedown", widgetMouseDown);
-    widget.addEventListener("touchstart", widgetTouchStart, { passive: false });
-    document.addEventListener("mousemove", docMouseMove);
-    document.addEventListener("touchmove", docTouchMove, { passive: false });
-    document.addEventListener("mouseup", onPointerUp);
-    document.addEventListener("touchend", onPointerUp);
-    document.addEventListener("touchcancel", onPointerUp);
-
-    function cleanUpThunderX() {
-      stopScanSession();
-      resetTapCounter();
-      if (saveStatusTimer) {
-        clearTimeout(saveStatusTimer);
-        saveStatusTimer = null;
-      }
-      closePanel();
-
-      widget.removeEventListener("mousedown", widgetMouseDown);
-      widget.removeEventListener("touchstart", widgetTouchStart);
-      document.removeEventListener("mousemove", docMouseMove);
-      document.removeEventListener("touchmove", docTouchMove);
-      document.removeEventListener("mouseup", onPointerUp);
-      document.removeEventListener("touchend", onPointerUp);
-      document.removeEventListener("touchcancel", onPointerUp);
-
-      if (widget && widget.parentNode) widget.remove();
-      if (scanOverlay && scanOverlay.parentNode) scanOverlay.remove();
-      if (backdrop && backdrop.parentNode) backdrop.remove();
-      if (panel && panel.parentNode) panel.remove();
-      if (style && style.parentNode) style.remove();
-
-      const loginOverlay = document.getElementById("qx999-login-overlay");
-      if (loginOverlay && loginOverlay.parentNode) loginOverlay.remove();
-      const loginStyle = document.getElementById("qx999-login-style");
-      if (loginStyle && loginStyle.parentNode) loginStyle.remove();
-
-      delete window.__QX999_ACTIVE__;
-      delete window.__QX999_STOP__;
-      delete window.__THUNDERX_STOP__;
-      if (window.__THUNDERX_BOT_STATE__ === "THUNDER_X") {
-        window.__THUNDERX_BOT_STATE__ = "NONE";
-      }
-      console.log("Thunder X completely stopped.");
-    }
-
-    window.__THUNDERX_STOP__ = cleanUpThunderX;
-    window.__QX999_STOP__ = cleanUpThunderX;
-    syncPanelUI();
-  }
-
-  window.__initThunderX__ = function () {
-    if (window.__QX999_ACTIVE__) return;
-    showLicenseGate(initQX999);
-  };
-
   // ===================================================================
-  // ENGINE B: SECOND BOT / QUOTEX ZR (COMPLETE SOURCE)
+  // QUOTEX TE CORE (ROUND CONTROL + WEBSOCKET TRACKING + SWITCH LOGIC)
   // ===================================================================
-  window.__initSecondBot__ = function () {
-    if (window.__SECOND_BOT_ACTIVE__ || window.__QXZR_BOOKMARK__) {
-      console.warn("Second Bot (QUOTEX ZR) is already active.");
-      return;
-    }
-
-    window.__SECOND_BOT_ACTIVE__ = true;
-    window.__QXZR_BOOKMARK__ = true;
-    window.__THUNDERX_BOT_STATE__ = "SECOND_BOT";
-
+  function startQuotexTE() {
+    /* round engine */
+    const TAG = "QX_CANDLE_ROUND";
+    const STORE_KEY = "qxte_round_ui";
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
 
@@ -986,7 +257,9 @@
       events: {},
       sockets: [],
     };
+    let lastDataAt = 0;
 
+    // --- Fake candle controller ---
     const fake = {
       active: false,
       target: null,
@@ -997,6 +270,11 @@
     };
 
     const startFake = (target, seconds) => {
+      // Respect Thunder X Switch: Do not start fake controller if switch is OFF
+      if (!ThunderXSwitchAdapter.isEnabled()) {
+        showToast("Thunder X Switch is OFF. Enable the switch first.");
+        return;
+      }
       fake.active = true;
       fake.target = Number(target);
       fake.seconds = Math.max(0.2, Number(seconds) || 5);
@@ -1004,6 +282,7 @@
       fake.startAt = Date.now() / 1000;
       fake.holdOffset = null;
     };
+
     const stopFake = () => {
       fake.active = false;
       fake.startPrice = null;
@@ -1011,6 +290,8 @@
     };
 
     const fakePrice = (realPrice) => {
+      // If Thunder X Switch is OFF, bypass fake pricing completely
+      if (!ThunderXSwitchAdapter.isEnabled()) return realPrice;
       if (!fake.active || !isFinite(fake.target)) return realPrice;
       if (fake.startPrice == null) {
         fake.startPrice = realPrice;
@@ -1019,7 +300,7 @@
       const dur = Math.max(0.2, fake.seconds);
       const elapsed = Date.now() / 1000 - fake.startAt;
       if (elapsed < dur) {
-        const p = elapsed / dur;
+        const p = elapsed / dur; // linear interpolation
         return fake.startPrice + (fake.target - fake.startPrice) * p;
       }
       if (fake.holdOffset == null) fake.holdOffset = fake.target - realPrice;
@@ -1027,6 +308,7 @@
     };
 
     const fakeifyTicks = (rows) => {
+      if (!ThunderXSwitchAdapter.isEnabled()) return false;
       let changed = false;
       for (const row of rows) {
         if (
@@ -1044,6 +326,7 @@
     };
 
     const fakeifyPayload = (arr) => {
+      if (!ThunderXSwitchAdapter.isEnabled()) return false;
       if (Array.isArray(arr) && arr[0] === "quotes/stream" && Array.isArray(arr[1])) {
         return fakeifyTicks(arr[1]);
       }
@@ -1054,23 +337,37 @@
     };
 
     const rewriteText = (text) => {
+      if (!ThunderXSwitchAdapter.isEnabled()) return null;
       const idx = text.indexOf("[");
       if (idx < 0) return null;
       const prefix = text.slice(0, idx);
       let arr;
-      try { arr = JSON.parse(text.slice(idx)); } catch (_) { return null; }
+      try {
+        arr = JSON.parse(text.slice(idx));
+      } catch (_) {
+        return null;
+      }
       return fakeifyPayload(arr) ? prefix + JSON.stringify(arr) : null;
     };
 
     const rewriteBinary = (bytes) => {
+      if (!ThunderXSwitchAdapter.isEnabled()) return null;
       const off = bytes.length && bytes[0] < 10 ? 1 : 0;
       let text;
-      try { text = decoder.decode(bytes.subarray(off)); } catch (_) { return null; }
+      try {
+        text = decoder.decode(bytes.subarray(off));
+      } catch (_) {
+        return null;
+      }
       const idx = text.indexOf("[");
       if (idx < 0) return null;
       const jsonPrefix = text.slice(0, idx);
       let arr;
-      try { arr = JSON.parse(text.slice(idx)); } catch (_) { return null; }
+      try {
+        arr = JSON.parse(text.slice(idx));
+      } catch (_) {
+        return null;
+      }
       if (!fakeifyPayload(arr)) return null;
       const body = encoder.encode(jsonPrefix + JSON.stringify(arr));
       const out = new Uint8Array(off + body.length);
@@ -1079,7 +376,10 @@
       return out;
     };
 
-    const countEvent = (name) => { state.events[name] = (state.events[name] || 0) + 1; };
+    // --- Data tracking ---
+    const countEvent = (name) => {
+      state.events[name] = (state.events[name] || 0) + 1;
+    };
 
     const setAsset = (asset, source) => {
       if (!asset || typeof asset !== "string") return;
@@ -1111,6 +411,7 @@
       state.ticks++;
       state.serverOffset = time - Date.now() / 1000;
       state.lastTick = { time, price };
+      lastDataAt = Date.now();
 
       const start = Math.floor(time / state.period) * state.period;
       const c = state.candle;
@@ -1154,6 +455,7 @@
       if (last.start === currentStart) {
         state.candle = { ...last, fromHistory: true };
       }
+      lastDataAt = Date.now();
     };
 
     const handlePayload = (data) => {
@@ -1188,7 +490,9 @@
 
     const handleIncomingText = (text) => {
       if (text.length > 2 && (text[0] === "[" || text[0] === "{")) {
-        try { handlePayload(JSON.parse(text)); } catch (_) {}
+        try {
+          handlePayload(JSON.parse(text));
+        } catch (_) {}
         return;
       }
       const msg = parseSocketIoText(text);
@@ -1208,7 +512,11 @@
       let bytes = new Uint8Array(buf);
       if (bytes.length && bytes[0] < 10) bytes = bytes.subarray(1);
       const text = decoder.decode(bytes);
-      try { handlePayload(JSON.parse(text)); } catch (_) { handleIncomingText(text); }
+      try {
+        handlePayload(JSON.parse(text));
+      } catch (_) {
+        handleIncomingText(text);
+      }
     };
 
     const handleOutgoing = (data) => {
@@ -1241,10 +549,9 @@
       } catch (_) {}
     };
 
+    // --- Hook MessageEvent.data & WebSocket ---
     const PROC = Symbol("qxProcessed");
     const FAKED = Symbol("qxFaked");
-
-    // Reversible WebSocket Hooks
     const nativeDataDesc = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data");
     const nativeGetData = nativeDataDesc ? nativeDataDesc.get : null;
 
@@ -1266,7 +573,8 @@
             trackState(raw);
           }
 
-          if (!fake.active) return raw;
+          // If switch is disabled or fake controller not active, return raw unmodified data
+          if (!ThunderXSwitchAdapter.isEnabled() || !fake.active) return raw;
           if (this[FAKED] !== undefined) return this[FAKED];
 
           let out = raw;
@@ -1297,7 +605,9 @@
 
     const nativeSend = WebSocket.prototype.send;
     WebSocket.prototype.send = function (data) {
-      try { handleOutgoing(data); } catch (_) {}
+      try {
+        handleOutgoing(data);
+      } catch (_) {}
       return nativeSend.apply(this, arguments);
     };
 
@@ -1305,19 +615,21 @@
     const HookedWS = new Proxy(NativeWS, {
       construct(target, args) {
         const ws = new target(...args);
-        try { noteSocket(args[0]); } catch (_) {}
+        try {
+          noteSocket(args[0]);
+        } catch (_) {}
         return ws;
       },
     });
     window.WebSocket = HookedWS;
 
-    var APP = "QUOTEX ZR";
-    var UI_ROUND_KEY = "qxzr_round_ui";
+    var APP = BRAND_NAME;
+    var UI_ROUND_KEY = "qxte_round_ui";
     var uiRound = { fakeTarget: "", fakeSeconds: 5 };
     var fakeRunning = false;
 
     var host = document.createElement("div");
-    host.id = "qxzr-bookmark";
+    host.id = "qxte-bookmark";
     var root = host.attachShadow({ mode: "open" });
     root.innerHTML =
       "<style>" +
@@ -1332,7 +644,7 @@
       "img{pointer-events:none;-webkit-user-drag:none;user-select:none}" +
       ".frame{position:relative;width:64px;height:64px}" +
       ".tile{position:absolute;inset:0;border-radius:16px;overflow:hidden;background:#050c22;border:1.5px solid rgba(56,189,248,.95);box-shadow:0 10px 26px rgba(0,0,0,.55),0 0 18px rgba(30,144,255,.55);animation:pulse 2.4s ease-in-out infinite}" +
-      ".tile img{width:100%;height:100%;object-fit:cover;transform:scale(1.14);display:block}" +
+      ".tile img{width:100%;height:100%;object-fit:cover;transform:scale(1.05);display:block}" +
       ".scan{position:absolute;left:0;right:0;top:-40%;height:40%;background:linear-gradient(transparent,rgba(125,211,252,.38),transparent);animation:scan 2.8s linear infinite;pointer-events:none}" +
       ".k{position:absolute;width:12px;height:12px;border:2px solid #38bdf8;filter:drop-shadow(0 0 4px rgba(56,189,248,.9));pointer-events:none}" +
       ".k1{left:-6px;top:-6px;border-right:0;border-bottom:0;border-top-left-radius:5px}" +
@@ -1343,6 +655,8 @@
       ".name{position:relative;display:block;text-transform:uppercase;font:800 11px/1 Segoe UI,system-ui,sans-serif;letter-spacing:.12em;color:#e6f4ff;text-shadow:0 0 8px rgba(56,189,248,.85)}" +
       ".fab.live .tile{border-color:#34d399}" +
       ".fab.running .tile{animation-duration:.9s;border-color:#34d399}" +
+      ".fab.switch-off .tile{border-color:#ef4444;box-shadow:0 0 14px rgba(239,68,68,0.4)}" +
+      ".fab.switch-off .scan{display:none}" +
       ".tile .dot{position:absolute;right:5px;top:5px;width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399;display:none;pointer-events:none}" +
       ".fab.running .tile .dot{display:block;animation:blink 1s steps(2) infinite}" +
       ".panel{position:fixed;z-index:2147483646;width:min(340px,calc(100vw - 24px));padding:16px 14px 14px;border-radius:18px;color:#e6eefc;font:13px/1.45 Segoe UI,system-ui,sans-serif;transform-origin:0 0;pointer-events:auto;" +
@@ -1363,11 +677,12 @@
       ".head{position:relative;display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:grab;touch-action:none}" +
       ".head.dragging{cursor:grabbing}" +
       ".mini{width:42px;height:42px;border-radius:12px;overflow:hidden;border:1.5px solid rgba(56,189,248,.9);flex:none;cursor:pointer}" +
-      ".mini img{width:100%;height:100%;object-fit:cover;transform:scale(1.14)}" +
+      ".mini img{width:100%;height:100%;object-fit:cover;transform:scale(1.05)}" +
       ".ttl{font:800 16px/1 Segoe UI,system-ui,sans-serif;letter-spacing:.12em;color:#e6f4ff;text-shadow:0 0 8px rgba(56,189,248,.85)}" +
       ".sub{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.18em;color:rgba(125,211,252,.7)}" +
       ".chip{margin-left:auto;padding:4px 8px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.14em;color:#94a3b8;border:1px solid rgba(148,163,184,.35)}" +
       ".chip.live{color:#052e1c;border-color:transparent;background:linear-gradient(135deg,#34d399,#22d3ee)}" +
+      ".chip.off{color:#ffe4e6;border-color:rgba(244,63,94,.5);background:rgba(244,63,94,.2)}" +
       "p{position:relative;margin:0}" +
       "label{position:relative;display:block;margin:10px 0 6px;color:#8ea0bf;font-size:11px;font-weight:700;letter-spacing:.08em}" +
       "input{position:relative;width:100%;color:#e6eefc;font:16px Segoe UI,system-ui,sans-serif;letter-spacing:.14em;text-align:center;padding:11px 12px;border-radius:10px;background:rgba(2,6,23,.65);border:1px solid rgba(96,165,250,.24);outline:none}" +
@@ -1384,10 +699,17 @@
       ".btn-row button{flex:1;margin-top:0;font:800 12.5px Segoe UI,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:11px 0;border-radius:12px}" +
       ".btn-row .start{color:#fff;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,#2563eb,#06b6d4);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 8px 20px rgba(37,99,235,.45)}" +
       ".btn-row .stop{color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.45)}" +
-      ".btn-row button:disabled{opacity:.32;cursor:default}" +
-      ".btn-switch-thx{width:100%;margin-top:10px;padding:11px 0;border:none;border-radius:12px;background:linear-gradient(135deg,#00ff66,#00b843);color:#052210;font:800 12.5px Segoe UI,system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;box-shadow:0 4px 18px rgba(0,255,102,.35);transition:transform .15s ease,box-shadow .15s ease}" +
-      ".btn-switch-thx:hover{box-shadow:0 6px 22px rgba(0,255,102,.55)}" +
-      ".btn-switch-thx:active{transform:scale(.98)}" +
+      ".btn-row button:disabled{opacity:.32;cursor:not-allowed}" +
+      /* Thunder X Switch Control UI */
+      ".switch-box{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin-top:12px;border-radius:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(56,189,248,0.3)}" +
+      ".switch-label-wrap{display:flex;flex-direction:column;gap:2px}" +
+      ".switch-title{font-size:11px;font-weight:800;letter-spacing:.08em;color:#7dd3fc;text-transform:uppercase}" +
+      ".switch-desc{font-size:9px;color:#94a3b8}" +
+      ".switch-btn-toggle{display:flex;align-items:center;background:rgba(15,23,42,0.8);border:1px solid rgba(56,189,248,0.4);border-radius:20px;padding:2px;cursor:pointer}" +
+      ".switch-pill{padding:4px 10px;font-size:10px;font-weight:800;border-radius:16px;letter-spacing:.05em;transition:all .2s ease}" +
+      ".switch-pill.active-on{background:#00ff66;color:#052210;box-shadow:0 0 10px rgba(0,255,102,0.6)}" +
+      ".switch-pill.active-off{background:#ef4444;color:#fff;box-shadow:0 0 10px rgba(239,68,68,0.6)}" +
+      ".switch-pill.inactive{color:#64748b;background:transparent}" +
       "@keyframes blink{50%{opacity:.25}}" +
       "@keyframes pulse{50%{box-shadow:0 0 24px 4px rgba(56,189,248,.85)}}" +
       "@keyframes scan{to{top:110%}}" +
@@ -1408,15 +730,16 @@
       ".cap{font-size:7.5px}" +
       ".btn-row{margin-top:10px;gap:6px}" +
       ".btn-row button{padding:8px 0;font-size:11px}" +
-      ".btn-switch-thx{margin-top:8px;padding:9px 0;font-size:11px}" +
+      ".switch-box{padding:8px 10px;margin-top:8px}" +
+      ".switch-pill{padding:3px 8px;font-size:9px}" +
       "}" +
       "</style>" +
       '<div class="fab" title="' + APP + '">' +
       '<div class="frame"><div class="tile"><img alt="" draggable="false"><i class="scan"></i><i class="dot"></i></div><i class="k k1"></i><i class="k k2"></i><i class="k k3"></i><i class="k k4"></i></div>' +
-      '<div class="plate"><span class="name">' + APP + "</span></div></div>" +
+      '<div class="plate"><span class="name">' + BRAND_SHORT + "</span></div></div>" +
       '<div class="panel" hidden>' +
       '<div class="grid"></div><i class="sweep"></i><i class="pk pk1"></i><i class="pk pk2"></i><i class="pk pk3"></i><i class="pk pk4"></i>' +
-      '<div class="head row" style="--d:0"><div class="mini" title="ছোট করুন"><img alt="" draggable="false"></div><div><div class="ttl">' + APP + '</div><div class="sub">ROUND CONTROL</div></div><span class="chip">IDLE</span></div>' +
+      '<div class="head row" style="--d:0"><div class="mini" title="Minimize"><img alt="" draggable="false"></div><div><div class="ttl">' + APP + '</div><div class="sub">ROUND CONTROL</div></div><span class="chip">IDLE</span></div>' +
       '<div class="body"></div></div>';
 
     var $ = function (sel) { return root.querySelector(sel); };
@@ -1431,9 +754,24 @@
     var panelBusySince = 0;
     var ROBO = "cubic-bezier(.8, 0, .2, 1)";
     var imgs = root.querySelectorAll("img");
-    for (var i = 0; i < imgs.length; i++) imgs[i].src = "https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png";
+    
+    // Apply provided logo URL with resilient error fallback
+    for (var i = 0; i < imgs.length; i++) {
+      imgs[i].src = LOGO_URL;
+      imgs[i].onerror = function () {
+        this.src = "https://i.postimg.cc/yxNphdfJ/file-000000008d1481fbb8752033356f882f.png";
+      };
+    }
 
     function setLive(on) {
+      if (!ThunderXSwitchAdapter.isEnabled()) {
+        fab.classList.remove("live");
+        chip.classList.remove("live");
+        chip.classList.add("off");
+        chip.textContent = "OFF";
+        return;
+      }
+      chip.classList.remove("off");
       fab.classList.toggle("live", on);
       chip.classList.toggle("live", on);
       chip.textContent = on ? "LIVE" : "IDLE";
@@ -1531,16 +869,29 @@
 
     function updateRoundBtns(toolEls) {
       if (!toolEls) return;
-      toolEls.start.disabled = fakeRunning;
-      toolEls.stop.disabled = !fakeRunning;
-      fab.classList.toggle("running", fakeRunning);
-      if (toolEls.runChip) toolEls.runChip.classList.toggle("live", fakeRunning);
-      if (toolEls.runChipText) toolEls.runChipText.textContent = fakeRunning ? "LIVE" : "IDLE";
+      const isSwOn = ThunderXSwitchAdapter.isEnabled();
+      toolEls.start.disabled = !isSwOn || fakeRunning;
+      toolEls.stop.disabled = !isSwOn || !fakeRunning;
+      
+      fab.classList.toggle("running", fakeRunning && isSwOn);
+      fab.classList.toggle("switch-off", !isSwOn);
+
+      if (toolEls.runChip) toolEls.runChip.classList.toggle("live", fakeRunning && isSwOn);
+      if (toolEls.runChipText) {
+        if (!isSwOn) toolEls.runChipText.textContent = "DISABLED";
+        else toolEls.runChipText.textContent = fakeRunning ? "LIVE" : "IDLE";
+      }
+
+      // Update Switch UI elements
+      if (toolEls.swPillOn && toolEls.swPillOff) {
+        toolEls.swPillOn.className = isSwOn ? "switch-pill active-on" : "switch-pill inactive";
+        toolEls.swPillOff.className = !isSwOn ? "switch-pill active-off" : "switch-pill inactive";
+      }
     }
 
     function renderActive() {
       clear(body);
-      setLive(true);
+      setLive(ThunderXSwitchAdapter.isEnabled());
       var sub = $(".sub");
       if (sub) sub.textContent = "ROUND CONTROL · CORE";
 
@@ -1585,10 +936,20 @@
       btns.appendChild(stopBtn);
       body.appendChild(btns);
 
-      // SWITCH TO THUNDER X
-      var switchBtn = el("button", "btn-switch-thx", "Switch to Thunder X");
-      switchBtn.type = "button";
-      body.appendChild(switchBtn);
+      // MANUAL THUNDER X SWITCH CONTROL
+      var swBox = el("div", "switch-box");
+      var swLabelWrap = el("div", "switch-label-wrap");
+      swLabelWrap.appendChild(el("span", "switch-title", "Thunder X Switch"));
+      swLabelWrap.appendChild(el("span", "switch-desc", "Controls Quotex TE controller state"));
+      swBox.appendChild(swLabelWrap);
+
+      var swToggle = el("div", "switch-btn-toggle");
+      var swPillOn = el("span", "switch-pill active-on", "ON");
+      var swPillOff = el("span", "switch-pill inactive", "OFF");
+      swToggle.appendChild(swPillOn);
+      swToggle.appendChild(swPillOff);
+      swBox.appendChild(swToggle);
+      body.appendChild(swBox);
 
       var toolEls = {
         market: market,
@@ -1598,20 +959,26 @@
         stop: stopBtn,
         runChip: runChip,
         runChipText: runChipText,
+        swPillOn: swPillOn,
+        swPillOff: swPillOff,
       };
       body._qxToolEls = toolEls;
 
       fTarget.addEventListener("input", function () {
         uiRound.fakeTarget = fTarget.value;
         saveRoundUi();
-        if (fakeRunning) startFake(uiRound.fakeTarget, uiRound.fakeSeconds);
+        if (fakeRunning && ThunderXSwitchAdapter.isEnabled()) startFake(uiRound.fakeTarget, uiRound.fakeSeconds);
       });
       fSec.addEventListener("input", function () {
         uiRound.fakeSeconds = fSec.value;
         saveRoundUi();
-        if (fakeRunning) fake.seconds = Math.max(0.2, Number(uiRound.fakeSeconds) || 5);
+        if (fakeRunning && ThunderXSwitchAdapter.isEnabled()) fake.seconds = Math.max(0.2, Number(uiRound.fakeSeconds) || 5);
       });
       startBtn.addEventListener("click", function () {
+        if (!ThunderXSwitchAdapter.isEnabled()) {
+          showToast("Thunder X Switch is OFF.");
+          return;
+        }
         if (fakeRunning) return;
         var t = Number(uiRound.fakeTarget);
         if (!uiRound.fakeTarget || !isFinite(t)) {
@@ -1629,13 +996,30 @@
         updateRoundBtns(toolEls);
       });
 
-      switchBtn.addEventListener("click", function () {
-        window.switchBot("THUNDER_X");
+      // Manual switch toggle click
+      swToggle.addEventListener("click", function () {
+        const nextState = !ThunderXSwitchAdapter.isEnabled();
+        ThunderXSwitchAdapter.setEnabled(nextState, "ui");
       });
 
       updateRoundBtns(toolEls);
       markPanelRows();
     }
+
+    // Subscribe UI to Switch Adapter events
+    ThunderXSwitchAdapter.subscribe(function (enabled) {
+      if (!enabled) {
+        // Safe Switch OFF behavior: Stop fake controller safely
+        fakeRunning = false;
+        stopFake();
+        console.log("Quotex TE: Controller disabled via Thunder X Switch");
+      } else {
+        console.log("Quotex TE: Controller enabled via Thunder X Switch");
+      }
+      var toolEls = body._qxToolEls;
+      if (toolEls) updateRoundBtns(toolEls);
+      setLive(enabled);
+    });
 
     function place(left, top) {
       pos.x = Math.max(8, Math.min(left, window.innerWidth - 96));
@@ -1664,7 +1048,7 @@
 
     var pos = { x: window.innerWidth - 96, y: 120 };
     try {
-      var savedPos = JSON.parse(localStorage.getItem("qxzr_pos") || "null");
+      var savedPos = JSON.parse(localStorage.getItem("qxte_pos") || "null");
       if (savedPos && typeof savedPos.x === "number") pos = savedPos;
     } catch (e) {}
 
@@ -1734,9 +1118,10 @@
       if (panel.hidden) return;
       var raw = morphFrames();
       var frames = null;
+      var i;
       if (raw) {
         frames = [];
-        for (var i = raw.length - 1; i >= 0; i--) {
+        for (i = raw.length - 1; i >= 0; i--) {
           frames.push({
             offset: 1 - raw[i].offset,
             transform: raw[i].transform,
@@ -1815,7 +1200,7 @@
         panelDrag = null;
         head.classList.remove("dragging");
         if (pmoved) {
-          try { localStorage.setItem("qxzr_pos", JSON.stringify(pos)); } catch (e) {}
+          try { localStorage.setItem("qxte_pos", JSON.stringify(pos)); } catch (e) {}
           return;
         }
         if (mini.contains(pt)) closePanel();
@@ -1826,7 +1211,7 @@
       drag = null;
       fab.classList.remove("dragging");
       if (moved) {
-        try { localStorage.setItem("qxzr_pos", JSON.stringify(pos)); } catch (e) {}
+        try { localStorage.setItem("qxte_pos", JSON.stringify(pos)); } catch (e) {}
         return;
       }
       if (!panel.hidden) {
@@ -1863,7 +1248,7 @@
     window.addEventListener("blur", onWinBlur);
 
     host.style.cssText = "position:relative;z-index:2147483647";
-    setLive(true);
+    setLive(ThunderXSwitchAdapter.isEnabled());
     liftWidget();
     place(pos.x, pos.y);
 
@@ -1882,49 +1267,9 @@
       toolEls.market.textContent = state.asset ? fmtAsset(state.asset) : "Waiting for data…";
     }, 500);
 
-    // CLEANUP & API RESTORATION
-    function stopSecondBot() {
-      stopFake();
-      fakeRunning = false;
+    console.log(`${BRAND_NAME} initialized successfully. Switch State:`, ThunderXSwitchAdapter.isEnabled() ? "ON" : "OFF");
+  }
 
-      if (liftInterval) { clearInterval(liftInterval); liftInterval = null; }
-      if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
-      if (liftObs) { liftObs.disconnect(); liftObs = null; }
-
-      head.removeEventListener("pointerdown", onHeadPointerDown);
-      fab.removeEventListener("pointerdown", onFabPointerDown);
-      window.removeEventListener("pointermove", onWinPointerMove, true);
-      window.removeEventListener("pointerup", onWinPointerUp, true);
-      window.removeEventListener("pointercancel", onWinPointerCancel, true);
-      window.removeEventListener("visibilitychange", onWinVisibilityChange);
-      window.removeEventListener("blur", onWinBlur);
-
-      // Restore WebSocket native hooks
-      if (nativeDataDesc) {
-        try { Object.defineProperty(MessageEvent.prototype, "data", nativeDataDesc); } catch (_) {}
-      }
-      if (nativeSend) {
-        try { WebSocket.prototype.send = nativeSend; } catch (_) {}
-      }
-      if (NativeWS) {
-        try { window.WebSocket = NativeWS; } catch (_) {}
-      }
-
-      if (host && host.parentNode) host.remove();
-
-      delete window.__SECOND_BOT_ACTIVE__;
-      delete window.__SECOND_BOT_STOP__;
-      delete window.__QXZR_BOOKMARK__;
-      if (window.__THUNDERX_BOT_STATE__ === "SECOND_BOT") {
-        window.__THUNDERX_BOT_STATE__ = "NONE";
-      }
-      console.log("Second Bot (QUOTEX ZR) stopped and unhooked successfully.");
-    }
-
-    window.__SECOND_BOT_STOP__ = stopSecondBot;
-    console.log("Second Bot (QUOTEX ZR) initialized successfully.");
-  };
-
-  // Auto-start Thunder X on first load
-  window.__initThunderX__();
+  // Check license authentication and start Quotex TE
+  showLicenseGate(startQuotexTE);
 })();
