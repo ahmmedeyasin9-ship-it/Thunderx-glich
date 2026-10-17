@@ -2,12 +2,12 @@
  * ===================================================================
  * Quotex TE — Client with Password Protection & Thunder X Switch
  * ===================================================================
- * Branding: Quotex TE (Short: TE)
- * Logo: https://i.postimg.cc/jdr5DmVK/IMG-20261016-151951-401.jpg
+ * Branding: RX COMMUNITY  (Short: RX)
+ * Logo: https://i.postimg.cc/fRQ8Dfyg/IMG-20261017-164405-686.jpg
  * 
  * Features:
  * 1. Password Protection:
- *    - Modal Title: Quotex TE
+ *    - Modal Title: RX COMMUNITY 
  *    - Message: Enter Password
  *    - Enforces <input type="password"> (never type="text")
  *    - Zero plain password exposure in UI, logs, errors, or storage
@@ -29,9 +29,9 @@
   window.__QUOTEX_TE_INITIALIZED__ = true;
 
   // Constants & Branding
-  const BRAND_TITLE = "Quotex TE";
-  const BRAND_SHORT = "Quotex TE";
-  const BRAND_LOGO = "https://i.postimg.cc/jdr5DmVK/IMG-20261016-151951-401.jpg";
+  const BRAND_TITLE = "RX COMMUNITY ";
+  const BRAND_SHORT = "RX COMMUNITY ";
+  const BRAND_LOGO = "https://i.postimg.cc/fRQ8Dfyg/IMG-20261017-164405-686.jpg";
   const AUTH_STORAGE_KEY = "qte_session_auth";
 
   // Backend Origin detection (if served from an API server)
